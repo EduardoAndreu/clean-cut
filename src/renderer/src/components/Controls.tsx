@@ -1,34 +1,34 @@
-import { useState, useRef } from 'react'
+import { useState, useEffect } from 'react'
 
 function Controls(): React.JSX.Element {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [selectedFile, setSelectedFile] = useState<{ filePath: string; fileName: string } | null>(
+    null
+  )
   const [silenceThreshold, setSilenceThreshold] = useState<number>(-30)
+  const [minSilenceLen, setMinSilenceLen] = useState<number>(1000)
   const [silencePadding, setSilencePadding] = useState<number>(100)
   const [status, setStatus] = useState<string>('No file selected')
   const [isProcessing, setIsProcessing] = useState<boolean>(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [results, setResults] = useState<number[][] | null>(null)
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (file) {
-      setSelectedFile(file)
-      setStatus(`Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`)
+  // Effect hook for cleanup and side effects
+  useEffect(() => {
+    // Reset results when file changes
+    if (selectedFile) {
+      setResults(null)
+      setStatus(`Selected: ${selectedFile.fileName}`)
     }
-  }
+  }, [selectedFile])
 
-  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    const file = event.dataTransfer.files[0]
-    if (file && file.type.startsWith('audio/')) {
-      setSelectedFile(file)
-      setStatus(`Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`)
-    } else {
-      setStatus('Please select a valid audio file')
+  const handleFileSelect = async () => {
+    try {
+      const result = await window.cleanCutAPI.showOpenDialog()
+      if (result) {
+        setSelectedFile(result)
+      }
+    } catch (error) {
+      setStatus(`Error selecting file: ${error}`)
     }
-  }
-
-  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault()
   }
 
   const handleProcess = async () => {
@@ -39,23 +39,43 @@ function Controls(): React.JSX.Element {
 
     setIsProcessing(true)
     setStatus('Processing audio file...')
+    setResults(null)
 
     try {
-      // Here you would implement the actual processing logic
-      // For now, we'll simulate processing
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-      setStatus(
-        `Processing complete! Silence threshold: ${silenceThreshold}dB, Padding: ${silencePadding}ms`
+      // Now we have the actual file path from the dialog
+      const result = await window.cleanCutAPI.invokeCleanCut(
+        selectedFile.filePath,
+        silenceThreshold,
+        minSilenceLen,
+        silencePadding
       )
+
+      // Enhanced logging for debugging
+      console.log('Python script result:', result)
+      console.log('Result type:', typeof result)
+      console.log('Result length:', result.length)
+      console.log('First few ranges:', result.slice(0, 5))
+
+      setResults(result)
+      setStatus(`Processing complete! Found ${result.length} silence ranges.
+Parameters used:
+- File: ${selectedFile.fileName}
+- Threshold: ${silenceThreshold}dB
+- Min silence: ${minSilenceLen}ms  
+- Padding: ${silencePadding}ms
+
+Raw result length: ${result.length}
+Total silence duration: ${result.reduce((sum, range) => sum + (range[1] - range[0]), 0).toFixed(2)}s`)
     } catch (error) {
-      setStatus(`Error processing file: ${error}`)
+      console.error('Clean cut error:', error)
+      setStatus(`Error processing file: ${error}
+
+Debug info:
+- File: ${selectedFile.fileName}
+- Parameters: threshold=${silenceThreshold}dB, minLen=${minSilenceLen}ms, padding=${silencePadding}ms`)
     } finally {
       setIsProcessing(false)
     }
-  }
-
-  const openFileDialog = () => {
-    fileInputRef.current?.click()
   }
 
   const containerStyle: React.CSSProperties = {
@@ -179,32 +199,20 @@ function Controls(): React.JSX.Element {
       {/* File Selection */}
       <div style={controlGroupStyle}>
         <label style={labelStyle}>Select Audio File</label>
-        <div
-          style={dropzoneStyle}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onClick={openFileDialog}
-        >
+        <div style={dropzoneStyle} onClick={handleFileSelect}>
           <div style={dropzoneContentStyle}>
             {selectedFile ? (
               <div style={fileInfoStyle}>
-                <span style={fileNameStyle}>{selectedFile.name}</span>
-                <span style={fileSizeStyle}>{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                <span style={fileNameStyle}>{selectedFile.fileName}</span>
+                <span style={fileSizeStyle}>Path: {selectedFile.filePath}</span>
               </div>
             ) : (
               <div style={placeholderStyle}>
-                <span>Click to select or drag and drop an audio file</span>
+                <span>Click to select an audio file</span>
               </div>
             )}
           </div>
         </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="audio/*"
-          onChange={handleFileSelect}
-          style={{ display: 'none' }}
-        />
       </div>
 
       {/* Silence Threshold Slider */}
@@ -221,6 +229,23 @@ function Controls(): React.JSX.Element {
         <div style={sliderRangeStyle}>
           <span>-60 dB</span>
           <span>0 dB</span>
+        </div>
+      </div>
+
+      {/* Minimum Silence Length Slider */}
+      <div style={controlGroupStyle}>
+        <label style={labelStyle}>Minimum Silence Length: {minSilenceLen} ms</label>
+        <input
+          type="range"
+          min="100"
+          max="5000"
+          value={minSilenceLen}
+          onChange={(e) => setMinSilenceLen(Number(e.target.value))}
+          style={sliderStyle}
+        />
+        <div style={sliderRangeStyle}>
+          <span>100 ms</span>
+          <span>5000 ms</span>
         </div>
       </div>
 
@@ -255,7 +280,44 @@ function Controls(): React.JSX.Element {
       {/* Status Display */}
       <div style={controlGroupStyle}>
         <label style={labelStyle}>Status</label>
-        <div style={statusStyle}>{status}</div>
+        <div style={statusStyle}>
+          {status}
+          {results && results.length > 0 && (
+            <div style={{ marginTop: '8px' }}>
+              <strong>Silence Ranges ({results.length} total):</strong>
+              {results.length <= 10 ? (
+                // Show all ranges if 10 or fewer
+                results.map((range, index) => (
+                  <div key={index} style={{ marginLeft: '8px' }}>
+                    {index + 1}. {range[0].toFixed(2)}s - {range[1].toFixed(2)}s (
+                    {(range[1] - range[0]).toFixed(2)}s)
+                  </div>
+                ))
+              ) : (
+                // Show first 5 and last 5 if more than 10
+                <>
+                  {results.slice(0, 5).map((range, index) => (
+                    <div key={index} style={{ marginLeft: '8px' }}>
+                      {index + 1}. {range[0].toFixed(2)}s - {range[1].toFixed(2)}s (
+                      {(range[1] - range[0]).toFixed(2)}s)
+                    </div>
+                  ))}
+                  <div
+                    style={{ marginLeft: '8px', fontStyle: 'italic', color: 'var(--ev-c-text-3)' }}
+                  >
+                    ... {results.length - 10} more ranges ...
+                  </div>
+                  {results.slice(-5).map((range, index) => (
+                    <div key={results.length - 5 + index} style={{ marginLeft: '8px' }}>
+                      {results.length - 5 + index + 1}. {range[0].toFixed(2)}s -{' '}
+                      {range[1].toFixed(2)}s ({(range[1] - range[0]).toFixed(2)}s)
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

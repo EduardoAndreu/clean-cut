@@ -1,8 +1,24 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 
+interface FileDialogResult {
+  filePath: string
+  fileName: string
+}
+
+interface CleanCutAPI {
+  invokeCleanCut: (
+    filePath: string,
+    threshold: number,
+    minSilenceLen: number,
+    padding: number
+  ) => Promise<number[][]>
+  showOpenDialog: () => Promise<FileDialogResult | null>
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
     api: unknown
+    cleanCutAPI: CleanCutAPI
   }
 }

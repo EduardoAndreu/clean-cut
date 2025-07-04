@@ -1,5 +1,6 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
+import { spawn } from 'child_process'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
@@ -51,6 +52,104 @@ app.whenReady().then(() => {
 
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
+
+  // Handler for file dialog
+  ipcMain.handle('show-open-dialog', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [
+        { name: 'Audio Files', extensions: ['wav', 'mp3', 'flac', 'aac', 'm4a', 'ogg'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    })
+
+    if (result.canceled) {
+      return null
+    }
+
+    return {
+      filePath: result.filePaths[0],
+      fileName: result.filePaths[0].split('/').pop() || result.filePaths[0]
+    }
+  })
+
+  // Handler for running the clean-cut Python script
+  ipcMain.handle(
+    'run-clean-cut',
+    async (_, filePath: string, threshold: number, minSilenceLen: number, padding: number) => {
+      return new Promise((resolve, reject) => {
+        // Path to the Python script
+        const scriptPath = join(__dirname, '../../python-backend/silence_detector.py')
+
+        // Remove temporary fix - now using proper file paths from dialog
+
+        // Log the exact command being executed
+        console.log('=== PYTHON EXECUTION DEBUG ===')
+        console.log('Script path:', scriptPath)
+        console.log('File path received:', filePath)
+        console.log('Working directory:', process.cwd())
+        console.log(
+          'Full command:',
+          `python ${scriptPath} ${filePath} ${threshold} ${minSilenceLen} ${padding}`
+        )
+
+        // Spawn the Python process with arguments
+        const pythonProcess = spawn('python', [
+          scriptPath,
+          filePath,
+          threshold.toString(),
+          minSilenceLen.toString(),
+          padding.toString()
+        ])
+
+        let stdout = ''
+        let stderr = ''
+
+        // Listen for stdout data
+        pythonProcess.stdout.on('data', (data) => {
+          const chunk = data.toString()
+          console.log('Python stdout chunk:', chunk)
+          stdout += chunk
+        })
+
+        // Listen for stderr data
+        pythonProcess.stderr.on('data', (data) => {
+          const chunk = data.toString()
+          console.log('Python stderr chunk:', chunk)
+          stderr += chunk
+        })
+
+        // Listen for process close
+        pythonProcess.on('close', (code) => {
+          console.log('Python process closed with code:', code)
+          console.log('Full stdout:', stdout)
+          console.log('Full stderr:', stderr)
+
+          if (code === 0) {
+            try {
+              // Parse the JSON output from stdout
+              const result = JSON.parse(stdout.trim())
+              console.log('Parsed result:', result)
+              console.log('Result length:', result.length)
+              resolve(result)
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error)
+              console.error('JSON parse error:', errorMessage)
+              reject(new Error(`Failed to parse JSON output: ${errorMessage}`))
+            }
+          } else {
+            console.error('Python script failed:', stderr)
+            reject(new Error(`Python script failed with code ${code}: ${stderr}`))
+          }
+        })
+
+        // Handle process errors
+        pythonProcess.on('error', (error) => {
+          reject(new Error(`Failed to start Python process: ${error.message}`))
+        })
+      })
+    }
+  )
 
   createWindow()
 
