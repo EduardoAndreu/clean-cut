@@ -1,1 +1,46 @@
- 
+<?xml version="1.0" encoding="UTF-8"?>
+<ExtensionManifest Version="7.0" ExtensionBundleId="com.cleancut.bundle" ExtensionBundleVersion="1.0.0" ExtensionBundleName="Clean-Cut Extension Bundle" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ExtensionList>
+    <Extension Id="com.cleancut.panel" Version="1.0.0"/>
+  </ExtensionList>
+  <ExecutionEnvironment>
+    <HostList>
+      <Host Name="PPRO" Version="[15.0,99.9]"/>
+    </HostList>
+    <LocaleList>
+      <Locale Code="All"/>
+    </LocaleList>
+    <RequiredRuntimeList>
+      <RequiredRuntime Name="CSXS" Version="12.0"/>
+    </RequiredRuntimeList>
+  </ExecutionEnvironment>
+  <DispatchInfoList>
+    <Extension Id="com.cleancut.panel">
+      <MainPath>../client/index.html</MainPath>
+      <ScriptPath>../host/host.jsx</ScriptPath>
+      <CEFCommandLine>
+        <Parameter>--allow-file-access-from-files</Parameter>
+        <Parameter>--allow-file-access</Parameter>
+        <Parameter>--enable-nodejs</Parameter>
+      </CEFCommandLine>
+      <UI>
+        <Type>Invisible</Type>
+        <Menu>Clean-Cut Launcher</Menu>
+        <Geometry>
+          <Size>
+            <Width>400</Width>
+            <Height>300</Height>
+          </Size>
+          <MinSize>
+            <Width>200</Width>
+            <Height>150</Height>
+          </MinSize>
+        </Geometry>
+      </UI>
+      <Resources>
+        <MainPath>../client/index.html</MainPath>
+        <ScriptPath>../host/host.jsx</ScriptPath>
+      </Resources>
+    </Extension>
+  </DispatchInfoList>
+</ExtensionManifest> 
