@@ -6,9 +6,20 @@ const api = {}
 
 // Clean Cut API for audio processing
 const cleanCutAPI = {
-  invokeCleanCut: (filePath: string, threshold: number, minSilenceLen: number, padding: number) =>
-    ipcRenderer.invoke('run-clean-cut', { filePath, threshold, minSilenceLen, padding }),
-  showOpenDialog: () => ipcRenderer.invoke('show-open-dialog')
+  invokeCleanCut: (
+    filePath: string,
+    threshold: number,
+    minSilenceLen: number,
+    padding: number,
+    options?: {
+      selectedAudioTracks?: number[]
+      selectedRange?: 'entire' | 'inout' | 'selected'
+    }
+  ) =>
+    ipcRenderer.invoke('run-clean-cut', { filePath, threshold, minSilenceLen, padding, options }),
+  showOpenDialog: () => ipcRenderer.invoke('show-open-dialog'),
+  requestSequenceInfo: () => ipcRenderer.invoke('request-sequence-info'),
+  requestSelectedClipsInfo: () => ipcRenderer.invoke('request-selected-clips-info')
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

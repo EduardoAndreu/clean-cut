@@ -60,6 +60,44 @@ function updateStatus(message, connectionState = 'disconnected') {
   }
 }
 
+// Function to update the sequence display
+function updateSequenceDisplay(sequenceInfo) {
+  const sequenceNameElement = document.getElementById('sequence-name')
+  const sequenceDetailsElement = document.getElementById('sequence-details')
+
+  if (sequenceInfo && sequenceInfo.success) {
+    sequenceNameElement.textContent = sequenceInfo.sequenceName
+    sequenceDetailsElement.textContent = `Project: ${sequenceInfo.projectName} | Tracks: ${sequenceInfo.videoTracks}V/${sequenceInfo.audioTracks}A`
+  } else {
+    sequenceNameElement.textContent = 'No active sequence'
+    sequenceDetailsElement.textContent = sequenceInfo ? sequenceInfo.error : 'No sequence data'
+  }
+}
+
+// Function to refresh sequence info
+function refreshSequenceInfo() {
+  addLogEntry('Refreshing sequence info...', 'info')
+
+  // Call ExtendScript function to get active sequence info
+  cs.evalScript('getActiveSequenceInfo()', function (result) {
+    console.log('Sequence info refresh result:', result)
+
+    try {
+      const resultData = JSON.parse(result)
+      if (resultData.success) {
+        addLogEntry(`Sequence refreshed: ${resultData.sequenceName}`, 'success')
+        updateSequenceDisplay(resultData)
+      } else {
+        addLogEntry(`Failed to refresh sequence: ${resultData.error}`, 'error')
+        updateSequenceDisplay(null)
+      }
+    } catch (e) {
+      addLogEntry('Error parsing sequence info', 'error')
+      updateSequenceDisplay(null)
+    }
+  })
+}
+
 // Function to reconnect (called by button)
 function reconnectToApp() {
   const reconnectButton = document.getElementById('reconnect-button')
@@ -102,6 +140,11 @@ function connect() {
       ws.send(JSON.stringify(handshakeMessage))
       console.log('Handshake message sent:', handshakeMessage)
       addLogEntry('Handshake completed', 'success')
+
+      // Automatically get sequence info when connected
+      setTimeout(() => {
+        refreshSequenceInfo()
+      }, 1000) // Small delay to ensure connection is fully established
     }
 
     // Handle incoming messages
@@ -168,6 +211,69 @@ function connect() {
               }
               ws.send(JSON.stringify(response))
               console.log('Cuts response sent:', response)
+            })
+            break
+
+          case 'request_sequence_info':
+            console.log('Received request for sequence info')
+            addLogEntry('Received sequence info request', 'info')
+
+            // Call ExtendScript function to get active sequence info
+            cs.evalScript('getActiveSequenceInfo()', function (result) {
+              console.log('Sequence info result:', result)
+
+              try {
+                const resultData = JSON.parse(result)
+                if (resultData.success) {
+                  addLogEntry(`Sequence info retrieved: ${resultData.sequenceName}`, 'success')
+                  updateSequenceDisplay(resultData)
+                } else {
+                  addLogEntry(`Failed to get sequence info: ${resultData.error}`, 'error')
+                  updateSequenceDisplay(null)
+                }
+              } catch (e) {
+                addLogEntry('Sequence info retrieved', 'success')
+              }
+
+              // Send the sequence info back to the server
+              const response = {
+                type: 'sequence_info_response',
+                payload: result
+              }
+              ws.send(JSON.stringify(response))
+              console.log('Sequence info response sent:', response)
+            })
+            break
+
+          case 'request_selected_clips_info':
+            console.log('Received request for selected clips info')
+            addLogEntry('Received selected clips info request', 'info')
+
+            // Call ExtendScript function to get selected clips info
+            cs.evalScript('getSelectedClipsInfo()', function (result) {
+              console.log('Selected clips info result:', result)
+
+              try {
+                const resultData = JSON.parse(result)
+                if (resultData.success) {
+                  addLogEntry(
+                    `Selected clips info retrieved: ${resultData.selectedClips.length} clips`,
+                    'success'
+                  )
+                } else {
+                  addLogEntry(`Failed to get selected clips info: ${resultData.error}`, 'error')
+                }
+              } catch (e) {
+                addLogEntry('Selected clips info retrieved', 'success')
+              }
+
+              // Send the selected clips info back to the server
+              const response = {
+                type: 'selected_clips_info_response',
+                payload: result
+              }
+              ws.send(JSON.stringify(response))
+              console.log('Selected clips info response sent:', response)
             })
             break
 
@@ -245,6 +351,9 @@ document.addEventListener('DOMContentLoaded', function () {
   const logsContainer = document.getElementById('logs-container')
   logsContainer.innerHTML = ''
   addLogEntry('Extension loaded and ready', 'success')
+
+  // Initialize sequence display
+  updateSequenceDisplay(null)
 
   // Start connection
   connect()

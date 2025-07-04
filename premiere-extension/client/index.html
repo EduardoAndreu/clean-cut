@@ -184,6 +184,53 @@
         font-size: 10px;
         color: #666;
       }
+
+      .sequence-section {
+        margin-bottom: 20px;
+      }
+
+      .sequence-container {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px;
+        background-color: #383838;
+        border-radius: 6px;
+        border: 1px solid #505050;
+      }
+
+      .sequence-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .sequence-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: #ffffff;
+      }
+
+      .refresh-button {
+        padding: 4px 8px;
+        background-color: #2196f3;
+        border: none;
+        border-radius: 4px;
+        color: white;
+        font-size: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .refresh-button:hover {
+        background-color: #1976d2;
+      }
+
+      .sequence-details {
+        font-size: 11px;
+        color: #ccc;
+      }
     </style>
   </head>
   <body>
@@ -197,6 +244,17 @@
       <div class="status-container">
         <div id="status-indicator" class="status-indicator disconnected"></div>
         <span id="status-text" class="status-text">Disconnected from Clean-Cut app</span>
+      </div>
+    </div>
+
+    <div class="sequence-section">
+      <label class="status-label">Active Sequence</label>
+      <div class="sequence-container">
+        <div class="sequence-header">
+          <span id="sequence-name" class="sequence-name">No active sequence</span>
+          <button class="refresh-button" onclick="refreshSequenceInfo()">Refresh</button>
+        </div>
+        <div id="sequence-details" class="sequence-details">No sequence data</div>
       </div>
     </div>
 

@@ -10,6 +10,10 @@ interface CleanCutArgs {
   threshold: number
   minSilenceLen: number
   padding: number
+  options?: {
+    selectedAudioTracks?: number[]
+    selectedRange?: 'entire' | 'inout' | 'selected'
+  }
 }
 
 // WebSocket server variables
@@ -150,32 +154,75 @@ app.whenReady().then(() => {
     }
   })
 
-  // Handler for running the clean-cut Python script (supports both file and Premiere Pro workflow)
-  ipcMain.handle('run-clean-cut', async (_, params: CleanCutArgs & { filePath: string }) => {
-    const { filePath, threshold, minSilenceLen, padding } = params
-
-    // If filePath is provided (file mode), process directly
-    if (filePath && filePath.trim() !== '') {
-      console.log('Processing file directly:', filePath)
-      return processAudioFile(filePath, { threshold, minSilenceLen, padding })
-    }
-
-    // If no filePath (Premiere mode), use WebSocket workflow
+  // Handler for requesting sequence info from Premiere Pro
+  ipcMain.handle('request-sequence-info', async () => {
     if (!premiereSocket) {
       throw new Error('Premiere Pro is not connected.')
     }
 
-    // Store processing parameters for when audio path response comes back
-    currentProcessingParams = { threshold, minSilenceLen, padding }
-    console.log('Stored processing parameters for Premiere workflow:', currentProcessingParams)
+    // Send request to Premiere Pro to get sequence info
+    premiereSocket.send(JSON.stringify({ type: 'request_sequence_info' }))
+    console.log('Sent request_sequence_info to Premiere Pro')
 
-    // Send request to Premiere Pro to get the audio path
-    premiereSocket.send(JSON.stringify({ type: 'request_audio_path' }))
-    console.log('Sent request_audio_path to Premiere Pro')
-
-    // Return success - the actual processing will happen via WebSocket events
-    return { success: true, message: 'Clean cut request sent to Premiere Pro' }
+    return { success: true, message: 'Sequence info request sent to Premiere Pro' }
   })
+
+  // Handler for requesting selected clips info from Premiere Pro
+  ipcMain.handle('request-selected-clips-info', async () => {
+    if (!premiereSocket) {
+      throw new Error('Premiere Pro is not connected.')
+    }
+
+    // Send request to Premiere Pro to get selected clips info
+    premiereSocket.send(JSON.stringify({ type: 'request_selected_clips_info' }))
+    console.log('Sent request_selected_clips_info to Premiere Pro')
+
+    return { success: true, message: 'Selected clips info request sent to Premiere Pro' }
+  })
+
+  // Handler for running the clean-cut Python script (supports both file and Premiere Pro workflow)
+  ipcMain.handle(
+    'run-clean-cut',
+    async (
+      _,
+      params: CleanCutArgs & {
+        filePath: string
+        options?: {
+          selectedAudioTracks?: number[]
+          selectedRange?: 'entire' | 'inout' | 'selected'
+        }
+      }
+    ) => {
+      const { filePath, threshold, minSilenceLen, padding, options } = params
+
+      // If filePath is provided (file mode), process directly
+      if (filePath && filePath.trim() !== '') {
+        console.log('Processing file directly:', filePath)
+        return processAudioFile(filePath, { threshold, minSilenceLen, padding })
+      }
+
+      // If no filePath (Premiere mode), use WebSocket workflow
+      if (!premiereSocket) {
+        throw new Error('Premiere Pro is not connected.')
+      }
+
+      // Store processing parameters for when audio path response comes back
+      currentProcessingParams = { threshold, minSilenceLen, padding, options }
+      console.log('Stored processing parameters for Premiere workflow:', currentProcessingParams)
+
+      // Send request to Premiere Pro to get the audio path with processing options
+      premiereSocket.send(
+        JSON.stringify({
+          type: 'request_audio_path',
+          options: options || {}
+        })
+      )
+      console.log('Sent request_audio_path to Premiere Pro with options:', options)
+
+      // Return success - the actual processing will happen via WebSocket events
+      return { success: true, message: 'Clean cut request sent to Premiere Pro' }
+    }
+  )
 
   // Create WebSocket server for Premiere Pro communication
   const wss = new WebSocketServer({ port: 8085 })
@@ -196,6 +243,22 @@ app.whenReady().then(() => {
         const parsedMessage = JSON.parse(messageString)
 
         switch (parsedMessage.type) {
+          case 'sequence_info_response':
+            // Forward sequence info to renderer process
+            console.log('Received sequence info from Premiere:', parsedMessage.payload)
+            if (mainWindow) {
+              mainWindow.webContents.send('sequence-info-update', parsedMessage.payload)
+            }
+            break
+
+          case 'selected_clips_info_response':
+            // Forward selected clips info to renderer process
+            console.log('Received selected clips info from Premiere:', parsedMessage.payload)
+            if (mainWindow) {
+              mainWindow.webContents.send('selected-clips-info-update', parsedMessage.payload)
+            }
+            break
+
           case 'audio_path_response':
             // Extract file path from the message payload
             const filePath = parsedMessage.payload
@@ -207,7 +270,7 @@ app.whenReady().then(() => {
                 throw new Error('No processing parameters stored')
               }
 
-              const { threshold, minSilenceLen, padding } = currentProcessingParams
+              const { threshold, minSilenceLen, padding, options } = currentProcessingParams
               console.log('Using parameters:', currentProcessingParams)
 
               // Reuse the existing Python processing logic

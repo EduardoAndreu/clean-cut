@@ -1,4 +1,4 @@
-import Controls from './components/Controls'
+import Controls from './components/ControlsSilencesCut'
 
 function App(): React.JSX.Element {
   return (
