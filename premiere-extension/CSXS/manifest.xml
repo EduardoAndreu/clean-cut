@@ -24,7 +24,7 @@
         <Parameter>--enable-nodejs</Parameter>
       </CEFCommandLine>
       <UI>
-        <Type>Invisible</Type>
+        <Type>Panel</Type>
         <Menu>Clean-Cut Launcher</Menu>
         <Geometry>
           <Size>

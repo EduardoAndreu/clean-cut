@@ -18,8 +18,8 @@ function connect() {
     console.log('Attempting to connect to WebSocket server...')
     updateStatus('Connecting...')
 
-    // Create WebSocket connection to localhost:8080
-    ws = new WebSocket('ws://localhost:8080')
+    // Create WebSocket connection to localhost:8085
+    ws = new WebSocket('ws://localhost:8085')
 
     // Handle connection open
     ws.onopen = function (event) {

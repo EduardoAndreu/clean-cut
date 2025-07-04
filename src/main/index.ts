@@ -2,11 +2,26 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { spawn } from 'child_process'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { WebSocketServer, WebSocket } from 'ws'
 import icon from '../../resources/icon.png?asset'
+
+// Interface for clean cut arguments
+interface CleanCutArgs {
+  threshold: number
+  minSilenceLen: number
+  padding: number
+}
+
+// WebSocket server variables
+let premiereSocket: WebSocket | null = null
+let mainWindow: BrowserWindow | null = null
+
+// Store processing parameters for WebSocket workflow
+let currentProcessingParams: CleanCutArgs | null = null
 
 function createWindow(): void {
   // Create the browser window.
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 900,
     height: 670,
     show: false,
@@ -18,11 +33,11 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+  mainWindow!.on('ready-to-show', () => {
+    mainWindow!.show()
   })
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
+  mainWindow!.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
   })
@@ -30,9 +45,9 @@ function createWindow(): void {
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    mainWindow!.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    mainWindow!.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
 
@@ -73,83 +88,213 @@ app.whenReady().then(() => {
     }
   })
 
-  // Handler for running the clean-cut Python script
-  ipcMain.handle(
-    'run-clean-cut',
-    async (_, filePath: string, threshold: number, minSilenceLen: number, padding: number) => {
-      return new Promise((resolve, reject) => {
-        // Path to the Python script
-        const scriptPath = join(__dirname, '../../python-backend/silence_detector.py')
+  // Handler for running the clean-cut Python script via Premiere Pro
+  ipcMain.handle('run-clean-cut', async (_, args: CleanCutArgs) => {
+    // Check if Premiere Pro is connected
+    if (!premiereSocket) {
+      throw new Error('Premiere Pro is not connected.')
+    }
 
-        // Remove temporary fix - now using proper file paths from dialog
+    // Store processing parameters for when audio path response comes back
+    currentProcessingParams = args
+    console.log('Stored processing parameters:', args)
 
-        // Log the exact command being executed
-        console.log('=== PYTHON EXECUTION DEBUG ===')
-        console.log('Script path:', scriptPath)
-        console.log('File path received:', filePath)
-        console.log('Working directory:', process.cwd())
-        console.log(
-          'Full command:',
-          `python ${scriptPath} ${filePath} ${threshold} ${minSilenceLen} ${padding}`
-        )
+    // Send request to Premiere Pro to get the audio path
+    premiereSocket.send(JSON.stringify({ type: 'request_audio_path' }))
+    console.log('Sent request_audio_path to Premiere Pro')
 
-        // Spawn the Python process with arguments
-        const pythonProcess = spawn('python', [
-          scriptPath,
-          filePath,
-          threshold.toString(),
-          minSilenceLen.toString(),
-          padding.toString()
-        ])
+    // Return success - the actual processing will happen via WebSocket events
+    return { success: true, message: 'Clean cut request sent to Premiere Pro' }
+  })
 
-        let stdout = ''
-        let stderr = ''
+  // Create WebSocket server for Premiere Pro communication
+  const wss = new WebSocketServer({ port: 8085 })
 
-        // Listen for stdout data
-        pythonProcess.stdout.on('data', (data) => {
-          const chunk = data.toString()
-          console.log('Python stdout chunk:', chunk)
-          stdout += chunk
-        })
+  wss.on('connection', (ws: WebSocket) => {
+    console.log('Premiere Pro connected via WebSocket')
+    premiereSocket = ws
 
-        // Listen for stderr data
-        pythonProcess.stderr.on('data', (data) => {
-          const chunk = data.toString()
-          console.log('Python stderr chunk:', chunk)
-          stderr += chunk
-        })
+    // Notify renderer process that Premiere is connected
+    if (mainWindow) {
+      mainWindow.webContents.send('premiere-status-update', { connected: true })
+    }
 
-        // Listen for process close
-        pythonProcess.on('close', (code) => {
-          console.log('Python process closed with code:', code)
-          console.log('Full stdout:', stdout)
-          console.log('Full stderr:', stderr)
+    ws.on('message', async (message: Buffer) => {
+      try {
+        const messageString = message.toString()
+        console.log('Received message from Premiere:', messageString)
+        const parsedMessage = JSON.parse(messageString)
 
-          if (code === 0) {
+        switch (parsedMessage.type) {
+          case 'audio_path_response':
+            // Extract file path from the message payload
+            const filePath = parsedMessage.payload
+            console.log('Processing audio file:', filePath)
+
             try {
-              // Parse the JSON output from stdout
-              const result = JSON.parse(stdout.trim())
-              console.log('Parsed result:', result)
-              console.log('Result length:', result.length)
-              resolve(result)
+              // Use stored parameters from the IPC request
+              if (!currentProcessingParams) {
+                throw new Error('No processing parameters stored')
+              }
+
+              const { threshold, minSilenceLen, padding } = currentProcessingParams
+              console.log('Using parameters:', currentProcessingParams)
+
+              // Reuse the existing Python processing logic
+              const scriptPath = join(__dirname, '../../python-backend/silence_detector.py')
+
+              console.log('=== PYTHON EXECUTION FROM WEBSOCKET ===')
+              console.log('Script path:', scriptPath)
+              console.log('File path received:', filePath)
+
+              const pythonProcess = spawn('python', [
+                scriptPath,
+                filePath,
+                threshold.toString(),
+                minSilenceLen.toString(),
+                padding.toString()
+              ])
+
+              let stdout = ''
+              let stderr = ''
+
+              pythonProcess.stdout.on('data', (data) => {
+                const chunk = data.toString()
+                console.log('Python stdout chunk:', chunk)
+                stdout += chunk
+              })
+
+              pythonProcess.stderr.on('data', (data) => {
+                const chunk = data.toString()
+                console.log('Python stderr chunk:', chunk)
+                stderr += chunk
+              })
+
+              pythonProcess.on('close', (code) => {
+                console.log('Python process closed with code:', code)
+                console.log('Full stdout:', stdout)
+                console.log('Full stderr:', stderr)
+
+                if (code === 0) {
+                  try {
+                    // Parse the JSON output from stdout
+                    const timestamps = JSON.parse(stdout.trim())
+                    console.log('Parsed timestamps:', timestamps)
+                    console.log('Timestamps length:', timestamps.length)
+
+                    // Send timestamps back to Premiere
+                    if (premiereSocket) {
+                      premiereSocket.send(
+                        JSON.stringify({
+                          type: 'request_cuts',
+                          payload: timestamps
+                        })
+                      )
+                      console.log('Sent cut requests to Premiere')
+                    }
+
+                    // Clear stored parameters after successful processing
+                    currentProcessingParams = null
+                  } catch (error) {
+                    const errorMessage = error instanceof Error ? error.message : String(error)
+                    console.error('JSON parse error:', errorMessage)
+
+                    // Send error back to Premiere
+                    if (premiereSocket) {
+                      premiereSocket.send(
+                        JSON.stringify({
+                          type: 'error',
+                          payload: `Failed to parse Python output: ${errorMessage}`
+                        })
+                      )
+                    }
+
+                    // Clear stored parameters after error
+                    currentProcessingParams = null
+                  }
+                } else {
+                  console.error('Python script failed:', stderr)
+
+                  // Send error back to Premiere
+                  if (premiereSocket) {
+                    premiereSocket.send(
+                      JSON.stringify({
+                        type: 'error',
+                        payload: `Python script failed with code ${code}: ${stderr}`
+                      })
+                    )
+                  }
+
+                  // Clear stored parameters after error
+                  currentProcessingParams = null
+                }
+              })
+
+              pythonProcess.on('error', (error) => {
+                console.error('Failed to start Python process:', error.message)
+
+                // Send error back to Premiere
+                if (premiereSocket) {
+                  premiereSocket.send(
+                    JSON.stringify({
+                      type: 'error',
+                      payload: `Failed to start Python process: ${error.message}`
+                    })
+                  )
+                }
+
+                // Clear stored parameters after error
+                currentProcessingParams = null
+              })
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : String(error)
-              console.error('JSON parse error:', errorMessage)
-              reject(new Error(`Failed to parse JSON output: ${errorMessage}`))
-            }
-          } else {
-            console.error('Python script failed:', stderr)
-            reject(new Error(`Python script failed with code ${code}: ${stderr}`))
-          }
-        })
+              console.error('Error processing audio file:', errorMessage)
 
-        // Handle process errors
-        pythonProcess.on('error', (error) => {
-          reject(new Error(`Failed to start Python process: ${error.message}`))
-        })
-      })
-    }
-  )
+              // Send error back to Premiere
+              if (premiereSocket) {
+                premiereSocket.send(
+                  JSON.stringify({
+                    type: 'error',
+                    payload: `Error processing audio file: ${errorMessage}`
+                  })
+                )
+              }
+
+              // Clear stored parameters after error
+              currentProcessingParams = null
+            }
+            break
+
+          default:
+            console.log('Unknown message type:', parsedMessage.type)
+            break
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        console.error('Error parsing WebSocket message:', errorMessage)
+      }
+    })
+
+    ws.on('close', () => {
+      console.log('Premiere Pro disconnected from WebSocket')
+      premiereSocket = null
+
+      // Notify renderer process that Premiere is disconnected
+      if (mainWindow) {
+        mainWindow.webContents.send('premiere-status-update', { connected: false })
+      }
+    })
+
+    ws.on('error', (error) => {
+      console.error('WebSocket error:', error)
+    })
+  })
+
+  wss.on('error', (error) => {
+    console.error('WebSocket server error:', error)
+  })
+
+  console.log('WebSocket server started on port 8085')
 
   createWindow()
 
