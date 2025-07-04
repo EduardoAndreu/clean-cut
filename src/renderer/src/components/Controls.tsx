@@ -10,6 +10,8 @@ function Controls(): React.JSX.Element {
   const [status, setStatus] = useState<string>('No file selected')
   const [isProcessing, setIsProcessing] = useState<boolean>(false)
   const [results, setResults] = useState<number[][] | null>(null)
+  const [processingMode, setProcessingMode] = useState<'file' | 'premiere'>('file')
+  const [premiereConnected, setPremiereConnected] = useState<boolean>(false)
 
   // Effect hook for cleanup and side effects
   useEffect(() => {
@@ -19,6 +21,30 @@ function Controls(): React.JSX.Element {
       setStatus(`Selected: ${selectedFile.fileName}`)
     }
   }, [selectedFile])
+
+  // Listen for Premiere Pro connection status updates
+  useEffect(() => {
+    const handlePremiereStatus = (event: any, data: { connected: boolean }) => {
+      setPremiereConnected(data.connected)
+      if (data.connected) {
+        setStatus('Premiere Pro connected! Ready to process.')
+      } else {
+        setStatus('Premiere Pro disconnected.')
+      }
+    }
+
+    // Add IPC listener for Premiere status updates
+    if (window.electron && window.electron.ipcRenderer) {
+      window.electron.ipcRenderer.on('premiere-status-update', handlePremiereStatus)
+    }
+
+    return () => {
+      // Cleanup listener on unmount
+      if (window.electron && window.electron.ipcRenderer) {
+        window.electron.ipcRenderer.removeAllListeners('premiere-status-update')
+      }
+    }
+  }, [])
 
   const handleFileSelect = async () => {
     try {
@@ -31,7 +57,7 @@ function Controls(): React.JSX.Element {
     }
   }
 
-  const handleProcess = async () => {
+  const handleProcessFile = async () => {
     if (!selectedFile) {
       setStatus('Please select a file first')
       return
@@ -78,6 +104,41 @@ Debug info:
     }
   }
 
+  const handleProcessFromPremiere = async () => {
+    if (!premiereConnected) {
+      setStatus(
+        'Premiere Pro is not connected. Please ensure the Clean-Cut extension is running in Premiere Pro.'
+      )
+      return
+    }
+
+    setIsProcessing(true)
+    setStatus('Requesting audio from Premiere Pro...')
+    setResults(null)
+
+    try {
+      const result = await window.cleanCutAPI.invokeCleanCut(
+        '', // Empty file path for Premiere workflow
+        silenceThreshold,
+        minSilenceLen,
+        silencePadding
+      )
+
+      setStatus(`Clean-cut request sent to Premiere Pro! Processing will happen automatically.
+Parameters used:
+- Threshold: ${silenceThreshold}dB
+- Min silence: ${minSilenceLen}ms  
+- Padding: ${silencePadding}ms
+
+Check Premiere Pro for the results.`)
+    } catch (error) {
+      console.error('Premiere clean cut error:', error)
+      setStatus(`Error sending request to Premiere Pro: ${error}`)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
   const containerStyle: React.CSSProperties = {
     maxWidth: '500px',
     margin: '0 auto',
@@ -106,6 +167,35 @@ Debug info:
     fontWeight: 600,
     color: 'var(--ev-c-text-1)',
     marginBottom: '8px'
+  }
+
+  const modeButtonStyle = (active: boolean): React.CSSProperties => ({
+    flex: 1,
+    padding: '10px 16px',
+    fontSize: '14px',
+    fontWeight: 600,
+    color: active ? 'var(--ev-button-alt-text)' : 'var(--ev-c-text-2)',
+    backgroundColor: active ? 'var(--ev-button-alt-bg)' : 'var(--ev-c-black-mute)',
+    border: `1px solid ${active ? 'var(--ev-button-alt-border)' : 'var(--ev-c-gray-3)'}`,
+    borderRadius: '6px',
+    cursor: 'pointer',
+    transition: 'all 0.3s ease'
+  })
+
+  const connectionStatusStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '12px',
+    color: premiereConnected ? '#4caf50' : '#f44336',
+    marginBottom: '16px'
+  }
+
+  const statusIndicatorStyle: React.CSSProperties = {
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    backgroundColor: premiereConnected ? '#4caf50' : '#f44336'
   }
 
   const dropzoneStyle: React.CSSProperties = {
@@ -174,9 +264,9 @@ Debug info:
     backgroundColor: isProcessing ? 'var(--ev-c-gray-2)' : 'var(--ev-button-alt-bg)',
     border: '1px solid var(--ev-button-alt-border)',
     borderRadius: '8px',
-    cursor: !selectedFile || isProcessing ? 'not-allowed' : 'pointer',
+    cursor: getButtonCursor(),
     transition: 'all 0.3s ease',
-    opacity: !selectedFile || isProcessing ? 0.5 : 1
+    opacity: getButtonOpacity()
   }
 
   const statusStyle: React.CSSProperties = {
@@ -192,28 +282,108 @@ Debug info:
     lineHeight: 1.5
   }
 
+  function getButtonCursor(): string {
+    if (isProcessing) return 'not-allowed'
+    if (processingMode === 'file' && !selectedFile) return 'not-allowed'
+    if (processingMode === 'premiere' && !premiereConnected) return 'not-allowed'
+    return 'pointer'
+  }
+
+  function getButtonOpacity(): number {
+    if (isProcessing) return 0.5
+    if (processingMode === 'file' && !selectedFile) return 0.5
+    if (processingMode === 'premiere' && !premiereConnected) return 0.5
+    return 1
+  }
+
+  function isButtonDisabled(): boolean {
+    if (isProcessing) return true
+    if (processingMode === 'file' && !selectedFile) return true
+    if (processingMode === 'premiere' && !premiereConnected) return true
+    return false
+  }
+
   return (
     <div style={containerStyle}>
       <h2 style={titleStyle}>Audio Processing Controls</h2>
 
-      {/* File Selection */}
+      {/* Connection Status */}
+      <div style={connectionStatusStyle}>
+        <div style={statusIndicatorStyle}></div>
+        <span>Premiere Pro: {premiereConnected ? 'Connected' : 'Disconnected'}</span>
+      </div>
+
+      {/* Processing Mode Selection */}
       <div style={controlGroupStyle}>
-        <label style={labelStyle}>Select Audio File</label>
-        <div style={dropzoneStyle} onClick={handleFileSelect}>
-          <div style={dropzoneContentStyle}>
-            {selectedFile ? (
-              <div style={fileInfoStyle}>
-                <span style={fileNameStyle}>{selectedFile.fileName}</span>
-                <span style={fileSizeStyle}>Path: {selectedFile.filePath}</span>
-              </div>
+        <label style={labelStyle}>Processing Mode</label>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            style={modeButtonStyle(processingMode === 'file')}
+            onClick={() => setProcessingMode('file')}
+          >
+            Select Audio File
+          </button>
+          <button
+            style={modeButtonStyle(processingMode === 'premiere')}
+            onClick={() => setProcessingMode('premiere')}
+          >
+            Process from Premiere Pro
+          </button>
+        </div>
+      </div>
+
+      {/* File Selection - only show in file mode */}
+      {processingMode === 'file' && (
+        <div style={controlGroupStyle}>
+          <label style={labelStyle}>Select Audio File</label>
+          <div style={dropzoneStyle} onClick={handleFileSelect}>
+            <div style={dropzoneContentStyle}>
+              {selectedFile ? (
+                <div style={fileInfoStyle}>
+                  <span style={fileNameStyle}>{selectedFile.fileName}</span>
+                  <span style={fileSizeStyle}>Path: {selectedFile.filePath}</span>
+                </div>
+              ) : (
+                <div style={placeholderStyle}>
+                  <span>Click to select an audio file</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Premiere Pro Mode Info */}
+      {processingMode === 'premiere' && (
+        <div style={controlGroupStyle}>
+          <label style={labelStyle}>Premiere Pro Processing</label>
+          <div
+            style={{
+              padding: '16px',
+              backgroundColor: 'var(--ev-c-black-mute)',
+              border: '1px solid var(--ev-c-gray-3)',
+              borderRadius: '8px',
+              fontSize: '14px',
+              color: 'var(--ev-c-text-2)'
+            }}
+          >
+            {premiereConnected ? (
+              <>
+                ✅ Ready to process audio from your active Premiere Pro sequence.
+                <br />
+                Click "Process Audio" below to automatically export and analyze your timeline audio.
+              </>
             ) : (
-              <div style={placeholderStyle}>
-                <span>Click to select an audio file</span>
-              </div>
+              <>
+                ❌ Premiere Pro not connected.
+                <br />
+                Please open Premiere Pro and launch the Clean-Cut extension from Window → Extensions
+                → Clean-Cut Launcher.
+              </>
             )}
           </div>
         </div>
-      </div>
+      )}
 
       {/* Silence Threshold Slider */}
       <div style={controlGroupStyle}>
@@ -270,8 +440,8 @@ Debug info:
       <div style={controlGroupStyle}>
         <button
           style={buttonStyle}
-          onClick={handleProcess}
-          disabled={!selectedFile || isProcessing}
+          onClick={processingMode === 'file' ? handleProcessFile : handleProcessFromPremiere}
+          disabled={isButtonDisabled()}
         >
           {isProcessing ? 'Processing...' : 'Process Audio'}
         </button>

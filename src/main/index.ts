@@ -19,6 +19,68 @@ let mainWindow: BrowserWindow | null = null
 // Store processing parameters for WebSocket workflow
 let currentProcessingParams: CleanCutArgs | null = null
 
+// Function to process audio file using Python script
+async function processAudioFile(filePath: string, params: CleanCutArgs): Promise<number[][]> {
+  const { threshold, minSilenceLen, padding } = params
+  const scriptPath = join(__dirname, '../../python-backend/silence_detector.py')
+
+  console.log('=== PYTHON EXECUTION ===')
+  console.log('Script path:', scriptPath)
+  console.log('File path:', filePath)
+  console.log('Parameters:', params)
+
+  return new Promise((resolve, reject) => {
+    const pythonProcess = spawn('python', [
+      scriptPath,
+      filePath,
+      threshold.toString(),
+      minSilenceLen.toString(),
+      padding.toString()
+    ])
+
+    let stdout = ''
+    let stderr = ''
+
+    pythonProcess.stdout.on('data', (data) => {
+      const chunk = data.toString()
+      console.log('Python stdout chunk:', chunk)
+      stdout += chunk
+    })
+
+    pythonProcess.stderr.on('data', (data) => {
+      const chunk = data.toString()
+      console.log('Python stderr chunk:', chunk)
+      stderr += chunk
+    })
+
+    pythonProcess.on('close', (code) => {
+      console.log('Python process closed with code:', code)
+      console.log('Full stdout:', stdout)
+      console.log('Full stderr:', stderr)
+
+      if (code === 0) {
+        try {
+          const timestamps = JSON.parse(stdout.trim())
+          console.log('Parsed timestamps:', timestamps)
+          console.log('Timestamps length:', timestamps.length)
+          resolve(timestamps)
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          console.error('JSON parse error:', errorMessage)
+          reject(new Error(`Failed to parse Python output: ${errorMessage}`))
+        }
+      } else {
+        reject(new Error(`Python script failed with code ${code}: ${stderr}`))
+      }
+    })
+
+    pythonProcess.on('error', (error) => {
+      console.error('Failed to start Python process:', error.message)
+      reject(new Error(`Failed to start Python process: ${error.message}`))
+    })
+  })
+}
+
 function createWindow(): void {
   // Create the browser window.
   mainWindow = new BrowserWindow({
@@ -88,16 +150,24 @@ app.whenReady().then(() => {
     }
   })
 
-  // Handler for running the clean-cut Python script via Premiere Pro
-  ipcMain.handle('run-clean-cut', async (_, args: CleanCutArgs) => {
-    // Check if Premiere Pro is connected
+  // Handler for running the clean-cut Python script (supports both file and Premiere Pro workflow)
+  ipcMain.handle('run-clean-cut', async (_, params: CleanCutArgs & { filePath: string }) => {
+    const { filePath, threshold, minSilenceLen, padding } = params
+
+    // If filePath is provided (file mode), process directly
+    if (filePath && filePath.trim() !== '') {
+      console.log('Processing file directly:', filePath)
+      return processAudioFile(filePath, { threshold, minSilenceLen, padding })
+    }
+
+    // If no filePath (Premiere mode), use WebSocket workflow
     if (!premiereSocket) {
       throw new Error('Premiere Pro is not connected.')
     }
 
     // Store processing parameters for when audio path response comes back
-    currentProcessingParams = args
-    console.log('Stored processing parameters:', args)
+    currentProcessingParams = { threshold, minSilenceLen, padding }
+    console.log('Stored processing parameters for Premiere workflow:', currentProcessingParams)
 
     // Send request to Premiere Pro to get the audio path
     premiereSocket.send(JSON.stringify({ type: 'request_audio_path' }))

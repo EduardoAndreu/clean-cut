@@ -6,26 +6,228 @@
     <title>Clean Cut - Premiere Extension</title>
     <style>
       body {
-        font-family: Arial, sans-serif;
-        padding: 20px;
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
+          sans-serif;
+        padding: 16px;
         background-color: #2d2d2d;
-        color: white;
+        color: #ffffff;
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.4;
       }
-      #status {
-        font-size: 16px;
+
+      .header {
+        text-align: center;
+        margin-bottom: 20px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #444;
+      }
+
+      .title {
+        font-size: 18px;
+        font-weight: 600;
+        margin: 0 0 8px 0;
+        color: #ffffff;
+      }
+
+      .subtitle {
+        font-size: 11px;
+        color: #999;
+        margin: 0;
+      }
+
+      .status-section {
         margin-bottom: 20px;
       }
+
+      .status-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #ccc;
+        margin-bottom: 8px;
+        display: block;
+      }
+
+      .status-container {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px;
+        background-color: #383838;
+        border-radius: 6px;
+        border: 1px solid #505050;
+      }
+
+      .status-indicator {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .status-text {
+        flex: 1;
+        font-size: 12px;
+      }
+
       .connected {
+        background-color: #4caf50;
+      }
+
+      .disconnected {
+        background-color: #f44336;
+      }
+
+      .connecting {
+        background-color: #ff9800;
+      }
+
+      .info-section {
+        margin-bottom: 20px;
+      }
+
+      .info-box {
+        background-color: rgba(33, 150, 243, 0.1);
+        border: 1px solid rgba(33, 150, 243, 0.3);
+        border-radius: 6px;
+        padding: 12px;
+        font-size: 11px;
+        line-height: 1.5;
+      }
+
+      .info-title {
+        font-weight: 600;
+        color: #2196f3;
+        margin-bottom: 6px;
+      }
+
+      .info-text {
+        color: #ccc;
+      }
+
+      .action-section {
+        margin-bottom: 16px;
+      }
+
+      .action-button {
+        width: 100%;
+        padding: 10px 16px;
+        background-color: #2196f3;
+        border: none;
+        border-radius: 6px;
+        color: white;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .action-button:hover {
+        background-color: #1976d2;
+      }
+
+      .action-button:disabled {
+        background-color: #666;
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
+
+      .logs-section {
+        margin-top: 16px;
+      }
+
+      .logs-container {
+        background-color: #1a1a1a;
+        border: 1px solid #444;
+        border-radius: 6px;
+        padding: 8px;
+        max-height: 120px;
+        overflow-y: auto;
+        font-family:
+          'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+        font-size: 10px;
+        line-height: 1.3;
+      }
+
+      .log-entry {
+        margin-bottom: 4px;
+        padding: 2px 0;
+      }
+
+      .log-timestamp {
+        color: #666;
+        margin-right: 6px;
+      }
+
+      .log-info {
+        color: #2196f3;
+      }
+
+      .log-success {
         color: #4caf50;
       }
-      .disconnected {
+
+      .log-error {
         color: #f44336;
+      }
+
+      .log-warning {
+        color: #ff9800;
+      }
+
+      .version-info {
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid #444;
+        text-align: center;
+        font-size: 10px;
+        color: #666;
       }
     </style>
   </head>
   <body>
-    <h1>Clean Cut - Premiere Extension</h1>
-    <p id="status" class="disconnected">Status: Disconnected</p>
+    <div class="header">
+      <h1 class="title">Clean-Cut</h1>
+      <p class="subtitle">Premiere Pro Extension</p>
+    </div>
+
+    <div class="status-section">
+      <label class="status-label">Connection Status</label>
+      <div class="status-container">
+        <div id="status-indicator" class="status-indicator disconnected"></div>
+        <span id="status-text" class="status-text">Disconnected from Clean-Cut app</span>
+      </div>
+    </div>
+
+    <div class="info-section">
+      <div class="info-box">
+        <div class="info-title">How it works:</div>
+        <div class="info-text">
+          This extension connects to your Clean-Cut desktop app. When you process audio in the main
+          app using "Process from Premiere Pro" mode, this extension will automatically export your
+          active sequence audio and perform cuts based on detected silence.
+        </div>
+      </div>
+    </div>
+
+    <div class="action-section">
+      <button id="reconnect-button" class="action-button" onclick="reconnectToApp()">
+        Reconnect to Clean-Cut App
+      </button>
+    </div>
+
+    <div class="logs-section">
+      <label class="status-label">Activity Log</label>
+      <div id="logs-container" class="logs-container">
+        <div class="log-entry">
+          <span class="log-timestamp">[00:00:00]</span>
+          <span class="log-info">Extension loaded</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="version-info">Clean-Cut Extension v1.0.0</div>
 
     <script type="text/javascript" src="./CSInterface.js"></script>
     <script src="main.js"></script>

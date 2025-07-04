@@ -7,7 +7,7 @@ const api = {}
 // Clean Cut API for audio processing
 const cleanCutAPI = {
   invokeCleanCut: (filePath: string, threshold: number, minSilenceLen: number, padding: number) =>
-    ipcRenderer.invoke('run-clean-cut', filePath, threshold, minSilenceLen, padding),
+    ipcRenderer.invoke('run-clean-cut', { filePath, threshold, minSilenceLen, padding }),
   showOpenDialog: () => ipcRenderer.invoke('show-open-dialog')
 }
 
