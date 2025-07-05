@@ -33,11 +33,12 @@ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         </CEFCommandLine>
       </Resources>
       <Lifecycle>
-        <AutoVisible>false</AutoVisible>
+        <AutoVisible>true</AutoVisible>
       </Lifecycle>
       <UI>
-        <Type>Custom</Type>
+        <Type>Panel</Type>
         <Menu>Clean-Cut Launcher</Menu>
+        <Title>Clean-Cut</Title>
         <Geometry>
           <Size>
             <Width>400</Width>
@@ -47,6 +48,10 @@ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
             <Width>200</Width>
             <Height>150</Height>
           </MinSize>
+          <MaxSize>
+            <Width>1920</Width>
+            <Height>1080</Height>
+          </MaxSize>
         </Geometry>
       </UI>
     </DispatchInfo>
