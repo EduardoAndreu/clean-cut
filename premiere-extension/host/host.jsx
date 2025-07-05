@@ -175,6 +175,7 @@ function getActiveSequenceInfo() {
       success: true,
       hasActiveSequence: true,
       sequenceName: sequence.name || 'Untitled Sequence',
+      projectName: app.project.name || 'Untitled Project',
       frameRate: 'N/A',
       duration: 0,
       durationSeconds: 0,

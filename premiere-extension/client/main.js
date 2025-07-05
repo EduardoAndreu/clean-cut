@@ -67,7 +67,7 @@ function updateSequenceDisplay(sequenceInfo) {
 
   if (sequenceInfo && sequenceInfo.success) {
     sequenceNameElement.textContent = sequenceInfo.sequenceName
-    sequenceDetailsElement.textContent = `Project: ${sequenceInfo.projectName} | Tracks: ${sequenceInfo.videoTracks}V/${sequenceInfo.audioTracks}A`
+    sequenceDetailsElement.textContent = `Project: ${sequenceInfo.projectName || 'Unknown'}`
   } else {
     sequenceNameElement.textContent = 'No active sequence'
     sequenceDetailsElement.textContent = sequenceInfo ? sequenceInfo.error : 'No sequence data'
