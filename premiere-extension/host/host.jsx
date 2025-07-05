@@ -2,6 +2,18 @@
 // This file contains functions that interact with Premiere Pro's API
 
 /**
+ * Helper function to log messages to the Premiere Pro console
+ * @param {string} message - Message to log
+ */
+function logMessage(message) {
+  try {
+    $.writeln('[Clean-Cut] ' + message)
+  } catch (e) {
+    // Silent fail if console logging isn't available
+  }
+}
+
+/**
  * Exports the active sequence's audio as a WAV file
  * @returns {string} JSON string containing the file path or error message
  */
@@ -16,37 +28,23 @@ function exportActiveSequenceAudio() {
     }
 
     var activeSequence = app.project.activeSequence
-
-    // Create a unique filename using timestamp
     var timestamp = new Date().getTime()
     var fileName = 'cleancut_audio_' + timestamp + '.wav'
-
-    // Get system temp folder
     var tempFolder = Folder.temp
     var outputFile = new File(tempFolder.fsName + '/' + fileName)
-
-    // Set up export settings for audio-only WAV
     var exportPath = outputFile.fsName
 
-    // Export the sequence as audio
-    // Note: This exports the entire sequence audio
     var success = activeSequence.exportAsMediaDirect(
       exportPath,
-      app.encoder.encodePresets.match('Microsoft AVI'), // WAV preset
+      app.encoder.encodePresets.match('Microsoft AVI'),
       app.encoder.ENCODE_ENTIRE_SEQUENCE
     )
 
-    if (success) {
-      return JSON.stringify({
-        success: true,
-        filePath: exportPath
-      })
-    } else {
-      return JSON.stringify({
-        success: false,
-        error: 'Failed to export audio'
-      })
-    }
+    return JSON.stringify({
+      success: success,
+      filePath: success ? exportPath : null,
+      error: success ? null : 'Failed to export audio'
+    })
   } catch (error) {
     return JSON.stringify({
       success: false,
@@ -73,7 +71,6 @@ function performCuts(timestampsJSON) {
     var activeSequence = app.project.activeSequence
     var timestamps
 
-    // Parse the JSON input
     try {
       timestamps = JSON.parse(timestampsJSON)
     } catch (parseError) {
@@ -83,7 +80,6 @@ function performCuts(timestampsJSON) {
       })
     }
 
-    // Validate input
     if (!timestamps || !timestamps.length) {
       return JSON.stringify({
         success: false,
@@ -94,7 +90,6 @@ function performCuts(timestampsJSON) {
     var cutsPerformed = 0
     var errors = []
 
-    // Iterate through timestamps and perform cuts
     for (var i = 0; i < timestamps.length; i++) {
       var timestamp = timestamps[i]
 
@@ -104,18 +99,12 @@ function performCuts(timestampsJSON) {
       }
 
       try {
-        // Convert seconds to ticks (Premiere's internal time unit)
         var startTime = timestamp.start * activeSequence.timebase
         var endTime = timestamp.end * activeSequence.timebase
 
-        // Perform razor cuts at start and end times
-        // Cut all tracks at the start time
         activeSequence.razor(startTime)
-
-        // Cut all tracks at the end time
         activeSequence.razor(endTime)
-
-        cutsPerformed += 2 // Two cuts per timestamp (start and end)
+        cutsPerformed += 2
       } catch (cutError) {
         errors.push('Error cutting at timestamp ' + i + ': ' + cutError.toString())
       }
@@ -146,16 +135,14 @@ function performCuts(timestampsJSON) {
  */
 function getPremiereStatus() {
   try {
-    var versionInfo = {
+    return JSON.stringify({
       status: 'connected',
       version: '1.0',
       premiereVersion: app.version || 'unknown',
       projectName: app.project ? app.project.name : 'no project',
       activeSequence:
         app.project && app.project.activeSequence ? app.project.activeSequence.name : 'none'
-    }
-
-    return JSON.stringify(versionInfo)
+    })
   } catch (error) {
     return JSON.stringify({
       status: 'error',
@@ -171,290 +158,247 @@ function getPremiereStatus() {
  */
 function getActiveSequenceInfo() {
   try {
-    logMessage('Starting getActiveSequenceInfo()')
-
-    if (!app.project) {
-      logMessage('No active project found')
+    // Check if there's an active project and sequence
+    if (!app.project || !app.project.activeSequence) {
       return JSON.stringify({
         success: false,
-        error: 'No active project'
+        error: 'No active sequence',
+        hasActiveSequence: false
       })
     }
 
-    if (!app.project.activeSequence) {
-      logMessage('No active sequence found')
-      return JSON.stringify({
-        success: false,
-        error: 'No active sequence'
-      })
-    }
+    var sequence = app.project.activeSequence
+    var timebase = parseFloat(sequence.timebase)
 
-    var activeSequence = app.project.activeSequence
-    logMessage('Found active sequence: ' + (activeSequence.name || 'unnamed'))
-
-    // Get the timeline span from 0 to the end of the last clip
-    var latestClipEndTicks = 0
-    var timebase
-    try {
-      timebase = parseFloat(activeSequence.timebase)
-      logMessage('Timebase: ' + timebase)
-    } catch (e) {
-      logMessage('Error getting timebase: ' + e.toString())
-      return JSON.stringify({
-        success: false,
-        error: 'Error getting timebase: ' + e.toString()
-      })
-    }
-    var clipsFound = 0
-
-    logMessage('Starting timeline span calculation - timebase: ' + timebase)
-
-    // Find the latest clip end time across all video tracks
-    if (activeSequence.videoTracks) {
-      logMessage('Scanning ' + activeSequence.videoTracks.numTracks + ' video tracks')
-      for (var v = 0; v < activeSequence.videoTracks.numTracks; v++) {
-        var videoTrack = activeSequence.videoTracks[v]
-        if (videoTrack.clips && videoTrack.clips.numItems > 0) {
-          logMessage('Video track ' + v + ' has ' + videoTrack.clips.numItems + ' clips')
-          for (var vc = 0; vc < videoTrack.clips.numItems; vc++) {
-            var videoClip = videoTrack.clips[vc]
-            if (videoClip && videoClip.end && videoClip.end.ticks !== undefined) {
-              var clipEndTicks = parseFloat(videoClip.end.ticks)
-              logMessage(
-                'Video track ' +
-                  v +
-                  ' clip ' +
-                  vc +
-                  ' (' +
-                  (videoClip.name || 'unnamed') +
-                  ') ends at ticks: ' +
-                  clipEndTicks +
-                  ' (' +
-                  clipEndTicks / timebase +
-                  ' seconds)'
-              )
-              if (clipEndTicks > latestClipEndTicks) {
-                latestClipEndTicks = clipEndTicks
-                logMessage(
-                  'New latest clip end: ' +
-                    clipEndTicks +
-                    ' ticks (' +
-                    clipEndTicks / timebase +
-                    ' seconds)'
-                )
-              }
-              clipsFound++
-            }
-          }
-        }
-      }
-    }
-
-    // Find the latest clip end time across all audio tracks
-    if (activeSequence.audioTracks) {
-      logMessage('Scanning ' + activeSequence.audioTracks.numTracks + ' audio tracks')
-      for (var a = 0; a < activeSequence.audioTracks.numTracks; a++) {
-        var audioTrack = activeSequence.audioTracks[a]
-        if (audioTrack.clips && audioTrack.clips.numItems > 0) {
-          logMessage('Audio track ' + a + ' has ' + audioTrack.clips.numItems + ' clips')
-          for (var ac = 0; ac < audioTrack.clips.numItems; ac++) {
-            var audioClip = audioTrack.clips[ac]
-            if (audioClip && audioClip.end && audioClip.end.ticks !== undefined) {
-              var clipEndTicks = parseFloat(audioClip.end.ticks)
-              logMessage(
-                'Audio track ' +
-                  a +
-                  ' clip ' +
-                  ac +
-                  ' (' +
-                  (audioClip.name || 'unnamed') +
-                  ') ends at ticks: ' +
-                  clipEndTicks +
-                  ' (' +
-                  clipEndTicks / timebase +
-                  ' seconds)'
-              )
-              if (clipEndTicks > latestClipEndTicks) {
-                latestClipEndTicks = clipEndTicks
-                logMessage(
-                  'New latest clip end: ' +
-                    clipEndTicks +
-                    ' ticks (' +
-                    clipEndTicks / timebase +
-                    ' seconds)'
-                )
-              }
-              clipsFound++
-            }
-          }
-        }
-      }
-    }
-
-    var timelineSpanSeconds = latestClipEndTicks / timebase
-    logMessage(
-      'Found ' +
-        clipsFound +
-        ' total clips, timeline span: 0 to ' +
-        timelineSpanSeconds +
-        ' seconds'
-    )
-
-    // If no clips found, fallback to sequence end time
-    var sequenceEndTicks = latestClipEndTicks
-    if (latestClipEndTicks === 0 || clipsFound === 0) {
-      sequenceEndTicks = parseFloat(activeSequence.end) || 0
-      timelineSpanSeconds = sequenceEndTicks / timebase
-      logMessage(
-        'No clips found, using sequence end: ' +
-          sequenceEndTicks +
-          ' ticks (' +
-          timelineSpanSeconds +
-          ' seconds)'
-      )
-    } else {
-      logMessage(
-        'Final timeline span: ' +
-          latestClipEndTicks +
-          ' ticks = ' +
-          timelineSpanSeconds +
-          ' seconds'
-      )
-    }
-
-    // Get sequence in/out points (these are different from work area)
-    // Note: getInPoint() and getOutPoint() return seconds, not ticks
-    var sequenceInPointSeconds = 0
-    var sequenceOutPointSeconds = timelineSpanSeconds
-    var hasSequenceInOutPoints = false
-
-    try {
-      // Get sequence in/out points (already in seconds)
-      sequenceInPointSeconds = parseFloat(activeSequence.getInPoint()) || 0
-      sequenceOutPointSeconds = parseFloat(activeSequence.getOutPoint()) || timelineSpanSeconds
-
-      // Check if in/out points are actually set (different from default sequence bounds)
-      hasSequenceInOutPoints =
-        (sequenceInPointSeconds !== 0 || sequenceOutPointSeconds !== timelineSpanSeconds) &&
-        sequenceInPointSeconds !== sequenceOutPointSeconds
-
-      logMessage('Sequence in point: ' + sequenceInPointSeconds + ' seconds')
-      logMessage('Sequence out point: ' + sequenceOutPointSeconds + ' seconds')
-      logMessage('Has sequence in/out points: ' + hasSequenceInOutPoints)
-    } catch (e) {
-      logMessage('Error getting sequence in/out points: ' + e.toString())
-      sequenceInPointSeconds = 0
-      sequenceOutPointSeconds = timelineSpanSeconds
-      hasSequenceInOutPoints = false
-    }
-
-    // Get work area information
-    // Note: getWorkAreaInPoint() and getWorkAreaOutPoint() return seconds, not ticks
-    var workAreaEnabled = false
-    var workAreaInPointSeconds = 0
-    var workAreaOutPointSeconds = timelineSpanSeconds
-    var hasWorkArea = false
-
-    try {
-      workAreaEnabled = activeSequence.isWorkAreaEnabled()
-      if (workAreaEnabled) {
-        workAreaInPointSeconds = parseFloat(activeSequence.getWorkAreaInPoint()) || 0
-        workAreaOutPointSeconds =
-          parseFloat(activeSequence.getWorkAreaOutPoint()) || timelineSpanSeconds
-        hasWorkArea = workAreaInPointSeconds !== workAreaOutPointSeconds
-
-        logMessage('Work area enabled: ' + workAreaEnabled)
-        logMessage('Work area in point: ' + workAreaInPointSeconds + ' seconds')
-        logMessage('Work area out point: ' + workAreaOutPointSeconds + ' seconds')
-      }
-    } catch (e) {
-      logMessage('Error getting work area info: ' + e.toString())
-      workAreaEnabled = false
-      hasWorkArea = false
-    }
-
-    // Get audio track information
-    var audioTrackInfo = []
-    if (activeSequence.audioTracks) {
-      for (var i = 0; i < activeSequence.audioTracks.numTracks; i++) {
-        var track = activeSequence.audioTracks[i]
-        audioTrackInfo.push({
-          index: i + 1,
-          name: track.name || 'Audio ' + (i + 1),
-          enabled: track.isTargeted !== undefined ? track.isTargeted : true,
-          muted: track.isMuted !== undefined ? track.isMuted : false
-        })
-      }
-    }
-
-    // Get frame rate using simpler approach
-    var frameRate = 'unknown'
-    try {
-      // Try the basic framerate property first
-      if (activeSequence.framerate && activeSequence.framerate !== 'unknown') {
-        frameRate = activeSequence.framerate.toString()
-        logMessage('Frame rate from sequence.framerate: ' + frameRate)
-      } else {
-        // Try videoDisplayFormat method
-        var videoDisplayFormat = activeSequence.videoDisplayFormat
-        if (videoDisplayFormat === 100) frameRate = '24'
-        else if (videoDisplayFormat === 101) frameRate = '25'
-        else if (videoDisplayFormat === 102) frameRate = '29.97'
-        else if (videoDisplayFormat === 103) frameRate = '29.97'
-        else if (videoDisplayFormat === 104) frameRate = '30'
-        else if (videoDisplayFormat === 105) frameRate = '50'
-        else if (videoDisplayFormat === 106) frameRate = '59.94'
-        else if (videoDisplayFormat === 107) frameRate = '59.94'
-        else if (videoDisplayFormat === 108) frameRate = '60'
-        else if (videoDisplayFormat === 110) frameRate = '23.976'
-        else if (videoDisplayFormat === 113) frameRate = '48'
-        else frameRate = 'unknown (' + videoDisplayFormat + ')'
-
-        logMessage('Frame rate from videoDisplayFormat: ' + frameRate)
-      }
-    } catch (e) {
-      logMessage('Error getting frame rate: ' + e.toString())
-      frameRate = 'unknown'
-    }
-
+    // Get basic sequence info
     var sequenceInfo = {
       success: true,
-      sequenceName: activeSequence.name,
-      projectName: app.project.name,
-      frameRate: frameRate,
-      timebase: timebase,
-      duration: sequenceEndTicks,
-      videoTracks: activeSequence.videoTracks ? activeSequence.videoTracks.numTracks : 0,
-      audioTracks: activeSequence.audioTracks ? activeSequence.audioTracks.numTracks : 0,
-      audioTrackInfo: audioTrackInfo,
-
-      // Sequence in/out points
-      sequenceInPoint: sequenceInPointSeconds,
-      sequenceOutPoint: sequenceOutPointSeconds,
-      hasSequenceInOutPoints: hasSequenceInOutPoints,
-
-      // Work area information
-      workAreaEnabled: workAreaEnabled,
-      workAreaInPoint: workAreaInPointSeconds,
-      workAreaOutPoint: workAreaOutPointSeconds,
-      hasWorkArea: hasWorkArea,
-
-      // For backwards compatibility, use work area if available, otherwise sequence in/out
-      inPoint: hasWorkArea ? workAreaInPointSeconds : sequenceInPointSeconds,
-      outPoint: hasWorkArea ? workAreaOutPointSeconds : sequenceOutPointSeconds,
-      hasInOutPoints: hasWorkArea || hasSequenceInOutPoints,
-
-      // Use timeline span instead of cumulative duration
-      durationSeconds: timelineSpanSeconds
+      hasActiveSequence: true,
+      sequenceName: sequence.name || 'Untitled Sequence',
+      frameRate: 'N/A',
+      duration: 0,
+      durationSeconds: 0,
+      durationTime: null,
+      endTime: 'N/A',
+      // In/Out points (regular methods)
+      inPoint: 0,
+      outPoint: 0,
+      // In/Out points (as time objects)
+      inPointTime: null,
+      outPointTime: null,
+      inPointTicks: null,
+      outPointTicks: null,
+      // Simple counts for main display
+      videoTracks: 0,
+      audioTracks: 0,
+      // Detailed arrays for details section
+      videoTrackInfo: [],
+      audioTrackInfo: [],
+      selectedClips: []
     }
 
-    logMessage('Final sequence info: ' + JSON.stringify(sequenceInfo, null, 2))
+    // Get frame rate using videoDisplayFormat
+    try {
+      var videoDisplayFormat = sequence.videoDisplayFormat
+      var frameRateMap = {
+        100: '24',
+        101: '25',
+        102: '29.97 Drop',
+        103: '29.97 Non-Drop',
+        104: '30',
+        105: '50',
+        106: '59.94 Drop',
+        107: '59.94 Non-Drop',
+        108: '60',
+        109: 'Frames',
+        110: '23.976',
+        111: '16mm Feet + Frames',
+        112: '35mm Feet + Frames',
+        113: '48'
+      }
+      sequenceInfo.frameRate =
+        frameRateMap[videoDisplayFormat] || 'Unknown (' + videoDisplayFormat + ')'
+    } catch (e) {
+      sequenceInfo.frameRate = 'N/A'
+    }
+
+    // Get duration information
+    try {
+      if (sequence.end) {
+        // According to documentation, sequence.end is already a string of ticks
+        var endTicks = parseFloat(sequence.end)
+        // Convert from ticks to seconds using the correct conversion
+        // There are 254016000000 ticks per second according to Time object documentation
+        var ticksPerSecond = 254016000000
+        sequenceInfo.duration = endTicks / ticksPerSecond
+        sequenceInfo.durationSeconds = sequenceInfo.duration
+        sequenceInfo.endTime = sequenceInfo.duration.toFixed(2) + 's'
+
+        // Create formatted duration time using Time object
+        try {
+          var durationTimeObj = new Time()
+          durationTimeObj.ticks = endTicks.toString()
+
+          // Create frame rate Time object for formatting
+          var frameRateTime = new Time()
+          frameRateTime.ticks = sequence.timebase.toString()
+
+          // Use the sequence's video display format for consistent formatting
+          var displayFormat = sequence.videoDisplayFormat || 103 // Default to 29.97 Non-Drop
+
+          sequenceInfo.durationTime = durationTimeObj.getFormatted(frameRateTime, displayFormat)
+        } catch (formatError) {
+          sequenceInfo.durationTime = null
+        }
+      }
+    } catch (e) {
+      // Use defaults
+    }
+
+    // Get in/out points (both regular and as time objects)
+    try {
+      // Regular in/out points (likely in seconds)
+      sequenceInfo.inPoint = parseFloat(sequence.getInPoint()) || 0
+      sequenceInfo.outPoint = parseFloat(sequence.getOutPoint()) || sequenceInfo.duration
+
+      // Time objects for more detailed timing information
+      try {
+        var inPointTime = sequence.getInPointAsTime()
+        var outPointTime = sequence.getOutPointAsTime()
+
+        // Convert Time objects to timecode format using getFormatted()
+        if (inPointTime && outPointTime) {
+          // Create frame rate Time object for formatting
+          var frameRateTime = new Time()
+          frameRateTime.ticks = sequence.timebase.toString()
+
+          // Use the sequence's video display format for consistent formatting
+          var displayFormat = sequence.videoDisplayFormat || 103 // Default to 29.97 Non-Drop
+
+          sequenceInfo.inPointTime = inPointTime.getFormatted(frameRateTime, displayFormat)
+          sequenceInfo.outPointTime = outPointTime.getFormatted(frameRateTime, displayFormat)
+        } else {
+          sequenceInfo.inPointTime = null
+          sequenceInfo.outPointTime = null
+        }
+
+        // Also get the raw time values if available
+        sequenceInfo.inPointTicks = inPointTime && inPointTime.ticks ? inPointTime.ticks : null
+        sequenceInfo.outPointTicks = outPointTime && outPointTime.ticks ? outPointTime.ticks : null
+      } catch (timeError) {
+        // Time objects not available - use null values
+        sequenceInfo.inPointTime = null
+        sequenceInfo.outPointTime = null
+        sequenceInfo.inPointTicks = null
+        sequenceInfo.outPointTicks = null
+      }
+    } catch (e) {
+      // Use defaults if methods fail
+      sequenceInfo.inPoint = 0
+      sequenceInfo.outPoint = sequenceInfo.duration
+      sequenceInfo.inPointTime = null
+      sequenceInfo.outPointTime = null
+      sequenceInfo.inPointTicks = null
+      sequenceInfo.outPointTicks = null
+    }
+
+    // Get audio track info
+    try {
+      if (sequence.audioTracks && sequence.audioTracks.numTracks) {
+        for (var i = 0; i < sequence.audioTracks.numTracks; i++) {
+          var track = sequence.audioTracks[i]
+          sequenceInfo.audioTracks += 1
+          sequenceInfo.audioTrackInfo.push({
+            index: i + 1,
+            name: track.name || 'Audio ' + (i + 1),
+            enabled: true
+          })
+        }
+      }
+    } catch (e) {
+      // Use empty array
+    }
+
+    // Get video track info
+    try {
+      if (sequence.videoTracks && sequence.videoTracks.numTracks) {
+        for (var i = 0; i < sequence.videoTracks.numTracks; i++) {
+          var track = sequence.videoTracks[i]
+          sequenceInfo.videoTracks += 1
+          sequenceInfo.videoTrackInfo.push({
+            index: i + 1,
+            name: track.name || 'Video ' + (i + 1),
+            enabled: true
+          })
+        }
+      }
+    } catch (e) {
+      // Use empty array
+    }
+
+    // Get selected clips using getSelection() method
+    try {
+      var selection = sequence.getSelection()
+      if (selection && selection.length > 0) {
+        for (var i = 0; i < selection.length; i++) {
+          var clip = selection[i]
+          try {
+            var clipInfo = {
+              name: clip.name || 'Unknown Clip',
+              mediaType: clip.mediaType || 'Unknown',
+              start: 0,
+              end: 0,
+              duration: 0,
+              startTime: null,
+              endTime: null,
+              trackIndex: -1
+            }
+
+            // Get timing information if available
+            if (clip.start && clip.end) {
+              var ticksPerSecond = 254016000000
+              clipInfo.start = parseFloat(clip.start.ticks) / ticksPerSecond
+              clipInfo.end = parseFloat(clip.end.ticks) / ticksPerSecond
+              clipInfo.duration = clipInfo.end - clipInfo.start
+
+              // Create formatted timecode for start and end times
+              try {
+                var startTimeObj = new Time()
+                startTimeObj.ticks = clip.start.ticks
+                var endTimeObj = new Time()
+                endTimeObj.ticks = clip.end.ticks
+
+                // Create frame rate Time object for formatting
+                var frameRateTime = new Time()
+                frameRateTime.ticks = sequence.timebase.toString()
+
+                // Use the sequence's video display format for consistent formatting
+                var displayFormat = sequence.videoDisplayFormat || 103 // Default to 29.97 Non-Drop
+
+                clipInfo.startTime = startTimeObj.getFormatted(frameRateTime, displayFormat)
+                clipInfo.endTime = endTimeObj.getFormatted(frameRateTime, displayFormat)
+              } catch (formatError) {
+                clipInfo.startTime = null
+                clipInfo.endTime = null
+              }
+            }
+
+            sequenceInfo.selectedClips.push(clipInfo)
+          } catch (clipError) {
+            // Skip invalid clips
+          }
+        }
+      }
+    } catch (e) {
+      // Use empty array if selection fails
+    }
+
     return JSON.stringify(sequenceInfo)
   } catch (error) {
-    logMessage('Error in getActiveSequenceInfo: ' + error.toString())
     return JSON.stringify({
       success: false,
-      error: 'Error getting sequence info: ' + error.toString()
+      error: 'Error getting sequence info: ' + error.toString(),
+      hasActiveSequence: false
     })
   }
 }
@@ -472,183 +416,10 @@ function getSelectedClipsInfo() {
       })
     }
 
-    var activeSequence = app.project.activeSequence
-    var selectedClips = []
-    var timebase = parseFloat(activeSequence.timebase) // Use the same timebase as sequence
-
-    // Get frame rate using simpler approach
-    var frameRate = 30 // Default fallback
-    try {
-      // Try the basic framerate property first
-      if (activeSequence.framerate && activeSequence.framerate !== 'unknown') {
-        frameRate = parseFloat(activeSequence.framerate)
-        logMessage('Frame rate for clips from sequence.framerate: ' + frameRate)
-      } else {
-        // Try videoDisplayFormat method
-        var videoDisplayFormat = activeSequence.videoDisplayFormat
-        if (videoDisplayFormat === 100) frameRate = 24
-        else if (videoDisplayFormat === 101) frameRate = 25
-        else if (videoDisplayFormat === 102) frameRate = 29.97
-        else if (videoDisplayFormat === 103) frameRate = 29.97
-        else if (videoDisplayFormat === 104) frameRate = 30
-        else if (videoDisplayFormat === 105) frameRate = 50
-        else if (videoDisplayFormat === 106) frameRate = 59.94
-        else if (videoDisplayFormat === 107) frameRate = 59.94
-        else if (videoDisplayFormat === 108) frameRate = 60
-        else if (videoDisplayFormat === 110) frameRate = 23.976
-        else if (videoDisplayFormat === 113) frameRate = 48
-        else frameRate = 30
-
-        logMessage('Frame rate for clips from videoDisplayFormat: ' + frameRate)
-      }
-    } catch (e) {
-      logMessage('Could not determine frame rate for clips, using 30fps: ' + e.toString())
-    }
-
-    logMessage(
-      'Checking for selected clips with timebase: ' + timebase + ', frame rate: ' + frameRate
-    )
-
-    // Check audio tracks for selected clips
-    if (activeSequence.audioTracks) {
-      logMessage(
-        'Checking ' + activeSequence.audioTracks.numTracks + ' audio tracks for selected clips'
-      )
-      for (var i = 0; i < activeSequence.audioTracks.numTracks; i++) {
-        var track = activeSequence.audioTracks[i]
-        if (track.clips && track.clips.numItems > 0) {
-          logMessage('Audio track ' + i + ' has ' + track.clips.numItems + ' clips')
-          for (var j = 0; j < track.clips.numItems; j++) {
-            var clip = track.clips[j]
-            if (clip && clip.isSelected && clip.isSelected()) {
-              var startTicks = clip.start && clip.start.ticks ? parseFloat(clip.start.ticks) : 0
-              var endTicks = clip.end && clip.end.ticks ? parseFloat(clip.end.ticks) : 0
-
-              // Check if these might be frame numbers instead of ticks
-              var startSeconds, endSeconds
-              if (startTicks < 100000 && endTicks < 100000) {
-                // Likely frame numbers - convert using frame rate
-                startSeconds = startTicks / frameRate
-                endSeconds = endTicks / frameRate
-                logMessage(
-                  'Audio clip ' +
-                    j +
-                    ' - detected frame numbers: ' +
-                    startTicks +
-                    '-' +
-                    endTicks +
-                    ' frames -> ' +
-                    startSeconds +
-                    '-' +
-                    endSeconds +
-                    ' seconds'
-                )
-              } else {
-                // Use timebase conversion
-                startSeconds = startTicks / timebase
-                endSeconds = endTicks / timebase
-                logMessage(
-                  'Audio clip ' +
-                    j +
-                    ' - using timebase conversion: ' +
-                    startTicks +
-                    '-' +
-                    endTicks +
-                    ' ticks -> ' +
-                    startSeconds +
-                    '-' +
-                    endSeconds +
-                    ' seconds'
-                )
-              }
-
-              selectedClips.push({
-                trackIndex: i + 1,
-                clipName: clip.name || 'Clip ' + j,
-                startTime: startSeconds,
-                endTime: endSeconds,
-                duration: endSeconds - startSeconds,
-                type: 'audio'
-              })
-            }
-          }
-        }
-      }
-    }
-
-    // Also check video tracks for selected clips
-    if (activeSequence.videoTracks) {
-      logMessage(
-        'Checking ' + activeSequence.videoTracks.numTracks + ' video tracks for selected clips'
-      )
-      for (var i = 0; i < activeSequence.videoTracks.numTracks; i++) {
-        var track = activeSequence.videoTracks[i]
-        if (track.clips && track.clips.numItems > 0) {
-          logMessage('Video track ' + i + ' has ' + track.clips.numItems + ' clips')
-          for (var j = 0; j < track.clips.numItems; j++) {
-            var clip = track.clips[j]
-            if (clip && clip.isSelected && clip.isSelected()) {
-              var startTicks = clip.start && clip.start.ticks ? parseFloat(clip.start.ticks) : 0
-              var endTicks = clip.end && clip.end.ticks ? parseFloat(clip.end.ticks) : 0
-
-              // Check if these might be frame numbers instead of ticks
-              var startSeconds, endSeconds
-              if (startTicks < 100000 && endTicks < 100000) {
-                // Likely frame numbers - convert using frame rate
-                startSeconds = startTicks / frameRate
-                endSeconds = endTicks / frameRate
-                logMessage(
-                  'Video clip ' +
-                    j +
-                    ' - detected frame numbers: ' +
-                    startTicks +
-                    '-' +
-                    endTicks +
-                    ' frames -> ' +
-                    startSeconds +
-                    '-' +
-                    endSeconds +
-                    ' seconds'
-                )
-              } else {
-                // Use timebase conversion
-                startSeconds = startTicks / timebase
-                endSeconds = endTicks / timebase
-                logMessage(
-                  'Video clip ' +
-                    j +
-                    ' - using timebase conversion: ' +
-                    startTicks +
-                    '-' +
-                    endTicks +
-                    ' ticks -> ' +
-                    startSeconds +
-                    '-' +
-                    endSeconds +
-                    ' seconds'
-                )
-              }
-
-              selectedClips.push({
-                trackIndex: i + 1,
-                clipName: clip.name || 'Clip ' + j,
-                startTime: startSeconds,
-                endTime: endSeconds,
-                duration: endSeconds - startSeconds,
-                type: 'video'
-              })
-            }
-          }
-        }
-      }
-    }
-
-    logMessage('Total selected clips found: ' + selectedClips.length)
-
     return JSON.stringify({
       success: true,
-      selectedClips: selectedClips,
-      hasSelectedClips: selectedClips.length > 0
+      selectedClips: [],
+      hasSelectedClips: false
     })
   } catch (error) {
     return JSON.stringify({
@@ -657,14 +428,5 @@ function getSelectedClipsInfo() {
       selectedClips: [],
       hasSelectedClips: false
     })
-  }
-}
-
-// Helper function to log messages to the Premiere Pro console
-function logMessage(message) {
-  try {
-    $.writeln('[Clean-Cut] ' + message)
-  } catch (e) {
-    // Silent fail if console logging isn't available
   }
 }

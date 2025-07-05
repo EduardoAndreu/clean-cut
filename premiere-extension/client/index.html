@@ -142,7 +142,7 @@
         border: 1px solid #444;
         border-radius: 6px;
         padding: 8px;
-        max-height: 120px;
+        max-height: 240px;
         overflow-y: auto;
         font-family:
           'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
@@ -231,6 +231,39 @@
         font-size: 11px;
         color: #ccc;
       }
+
+      .sequence-details-section {
+        margin-bottom: 20px;
+      }
+
+      .details-container {
+        padding: 12px;
+        background-color: #383838;
+        border-radius: 6px;
+        border: 1px solid #505050;
+        font-size: 11px;
+      }
+
+      .details-container p {
+        margin: 0 0 6px 0;
+      }
+
+      .details-container p:last-child {
+        margin-bottom: 0;
+      }
+
+      .details-list {
+        padding-left: 16px;
+        font-family:
+          'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+        font-size: 10px;
+        max-height: 80px;
+        overflow-y: auto;
+        background-color: #2d2d2d;
+        border-radius: 4px;
+        padding: 8px;
+        margin-top: 4px;
+      }
     </style>
   </head>
   <body>
@@ -255,6 +288,22 @@
           <button class="refresh-button" onclick="refreshSequenceInfo()">Refresh</button>
         </div>
         <div id="sequence-details" class="sequence-details">No sequence data</div>
+      </div>
+    </div>
+
+    <div class="sequence-details-section">
+      <label class="status-label">Sequence Details</label>
+      <div id="sequence-details-container" class="details-container">
+        <p><strong>Frame Rate:</strong> <span id="detail-frame-rate">N/A</span></p>
+        <p><strong>Duration:</strong> <span id="detail-end-time">N/A</span></p>
+        <p><strong>In Point:</strong> <span id="detail-in-point">N/A</span></p>
+        <p><strong>Out Point:</strong> <span id="detail-out-point">N/A</span></p>
+        <p>
+          <strong>Audio Tracks (<span id="detail-audio-track-count">0</span>):</strong>
+        </p>
+        <div id="detail-audio-tracks" class="details-list">None</div>
+        <p><strong>Selection:</strong></p>
+        <div id="detail-selection" class="details-list">None</div>
       </div>
     </div>
 

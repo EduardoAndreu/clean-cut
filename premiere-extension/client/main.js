@@ -74,26 +74,147 @@ function updateSequenceDisplay(sequenceInfo) {
   }
 }
 
+// Function to update the sequence details display
+function updateSequenceDetailsDisplay(details) {
+  const frameRateEl = document.getElementById('detail-frame-rate')
+  const endTimeEl = document.getElementById('detail-end-time')
+  const inPointEl = document.getElementById('detail-in-point')
+  const outPointEl = document.getElementById('detail-out-point')
+  const audioTrackCountEl = document.getElementById('detail-audio-track-count')
+  const audioTracksEl = document.getElementById('detail-audio-tracks')
+  const selectionEl = document.getElementById('detail-selection')
+
+  if (details && details.success) {
+    frameRateEl.textContent = details.frameRate || 'N/A'
+
+    // Display duration with both seconds and timecode format
+    if (details.durationSeconds !== undefined) {
+      let durationText = `${details.durationSeconds.toFixed(2)}s`
+      if (details.durationTime) {
+        durationText += ` (${details.durationTime})`
+      }
+      endTimeEl.textContent = durationText
+    } else {
+      endTimeEl.textContent = 'N/A'
+    }
+
+    // Display in point with both regular and time object values
+    if (details.inPoint !== undefined && details.inPoint >= 0) {
+      let inPointText = `${details.inPoint.toFixed(2)}s`
+      if (details.inPointTime) {
+        inPointText += ` (${details.inPointTime})`
+      }
+      inPointEl.textContent = inPointText
+    } else {
+      inPointEl.textContent = 'None'
+    }
+
+    // Display out point with both regular and time object values
+    if (details.outPoint !== undefined && details.outPoint >= 0) {
+      let outPointText = `${details.outPoint.toFixed(2)}s`
+      if (details.outPointTime) {
+        outPointText += ` (${details.outPointTime})`
+      }
+      outPointEl.textContent = outPointText
+    } else {
+      outPointEl.textContent = 'None'
+    }
+
+    audioTrackCountEl.textContent = details.audioTracks || 0
+
+    // Display audio track details
+    if (details.audioTrackInfo && details.audioTrackInfo.length > 0) {
+      audioTracksEl.innerHTML = '' // Clear previous entries
+      details.audioTrackInfo.forEach((track) => {
+        const trackDiv = document.createElement('div')
+        trackDiv.textContent = `Track ${track.index}: ${track.name} (${track.muted ? 'Muted' : 'Active'})`
+        audioTracksEl.appendChild(trackDiv)
+      })
+    } else {
+      audioTracksEl.textContent = 'None'
+    }
+
+    // Display selection details
+    if (details.selectedClips && details.selectedClips.length > 0) {
+      selectionEl.innerHTML = '' // Clear previous entries
+      details.selectedClips.forEach((clip) => {
+        const clipDiv = document.createElement('div')
+        clipDiv.style.marginBottom = '8px'
+
+        // Create clip name line
+        const nameDiv = document.createElement('div')
+        nameDiv.textContent = `[${clip.mediaType}] ${clip.name}`
+        nameDiv.style.fontWeight = 'bold'
+        clipDiv.appendChild(nameDiv)
+
+        // Create start point line
+        const startDiv = document.createElement('div')
+        let startText = `Start Point: ${clip.start.toFixed(2)}s`
+        if (clip.startTime) {
+          startText += ` (${clip.startTime})`
+        }
+        startDiv.textContent = startText
+        startDiv.style.marginLeft = '8px'
+        startDiv.style.fontSize = '9px'
+        clipDiv.appendChild(startDiv)
+
+        // Create end point line
+        const endDiv = document.createElement('div')
+        let endText = `End Point: ${clip.end.toFixed(2)}s`
+        if (clip.endTime) {
+          endText += ` (${clip.endTime})`
+        }
+        endDiv.textContent = endText
+        endDiv.style.marginLeft = '8px'
+        endDiv.style.fontSize = '9px'
+        clipDiv.appendChild(endDiv)
+
+        selectionEl.appendChild(clipDiv)
+      })
+    } else {
+      selectionEl.textContent = 'None'
+    }
+  } else {
+    // Reset to default values if no details are available
+    frameRateEl.textContent = 'N/A'
+    endTimeEl.textContent = 'N/A'
+    inPointEl.textContent = 'N/A'
+    outPointEl.textContent = 'N/A'
+    audioTrackCountEl.textContent = '0'
+    audioTracksEl.textContent = 'None'
+    selectionEl.textContent = 'None'
+  }
+}
+
 // Function to refresh sequence info
 function refreshSequenceInfo() {
   addLogEntry('Refreshing sequence info...', 'info')
 
   // Call ExtendScript function to get active sequence info
   cs.evalScript('getActiveSequenceInfo()', function (result) {
-    console.log('Sequence info refresh result:', result)
+    console.log('Raw ExtendScript result:', result)
+    console.log('Result type:', typeof result)
+    console.log('Result length:', result ? result.length : 'null/undefined')
+
+    // Log the actual content for debugging
+    addLogEntry(`Raw result: ${result}`, 'info')
 
     try {
       const resultData = JSON.parse(result)
       if (resultData.success) {
         addLogEntry(`Sequence refreshed: ${resultData.sequenceName}`, 'success')
         updateSequenceDisplay(resultData)
+        updateSequenceDetailsDisplay(resultData)
       } else {
         addLogEntry(`Failed to refresh sequence: ${resultData.error}`, 'error')
         updateSequenceDisplay(null)
+        updateSequenceDetailsDisplay(null)
       }
     } catch (e) {
-      addLogEntry('Error parsing sequence info', 'error')
+      addLogEntry(`Error parsing sequence info: ${e.message}`, 'error')
+      addLogEntry(`Raw result was: "${result}"`, 'error')
       updateSequenceDisplay(null)
+      updateSequenceDetailsDisplay(null)
     }
   })
 }
