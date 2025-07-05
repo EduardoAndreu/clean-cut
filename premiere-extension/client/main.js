@@ -186,6 +186,56 @@ function updateSequenceDetailsDisplay(details) {
   }
 }
 
+// Function to perform audio export to specified folder
+function performAudioExport() {
+  const exportFolderInput = document.getElementById('export-folder-input')
+  const exportButton = document.getElementById('export-button')
+  const exportFolder = exportFolderInput.value.trim()
+
+  // Disable button during operation
+  exportButton.disabled = true
+  exportButton.textContent = 'Exporting...'
+
+  addLogEntry('Starting audio export...', 'info')
+
+  // Call ExtendScript function to perform the export
+  cs.evalScript(`exportSequenceAudio('${exportFolder}')`, function (result) {
+    console.log('Export operation result:', result)
+
+    try {
+      const resultData = JSON.parse(result)
+      if (resultData.success) {
+        addLogEntry(`Audio exported: ${resultData.outputPath}`, 'success')
+        if (resultData.presetUsed) {
+          addLogEntry(`Preset used: ${resultData.presetUsed}`, 'info')
+        }
+        // Display debug information if available
+        if (resultData.debug) {
+          addLogEntry(`Debug info: ${JSON.stringify(resultData.debug, null, 2)}`, 'info')
+        }
+        // Keep the folder path for next time, but don't clear it
+      } else {
+        addLogEntry(`Export failed: ${resultData.error}`, 'error')
+        // Display debug information if available
+        if (resultData.debug) {
+          addLogEntry(`Debug info: ${JSON.stringify(resultData.debug, null, 2)}`, 'info')
+        }
+      }
+    } catch (e) {
+      // Handle non-JSON response (might be just the file path)
+      if (result && result.length > 0) {
+        addLogEntry(`Audio exported to: ${result}`, 'success')
+      } else {
+        addLogEntry('Export operation completed', 'success')
+      }
+    }
+
+    // Re-enable button
+    exportButton.disabled = false
+    exportButton.textContent = 'Export Audio'
+  })
+}
+
 // Function to perform cut at specified time
 function performCutAtTime() {
   const cutTimeInput = document.getElementById('cut-time-input')
