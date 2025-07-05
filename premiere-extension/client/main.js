@@ -186,6 +186,53 @@ function updateSequenceDetailsDisplay(details) {
   }
 }
 
+// Function to perform cut at specified time
+function performCutAtTime() {
+  const cutTimeInput = document.getElementById('cut-time-input')
+  const cutButton = document.getElementById('cut-button')
+  const cutTime = cutTimeInput.value.trim()
+
+  if (!cutTime) {
+    addLogEntry('Please enter a cut time', 'error')
+    return
+  }
+
+  // Validate timecode format (HH:MM:SS:FF)
+  const timecodeRegex = /^([0-9]{2}):([0-9]{2}):([0-9]{2}):([0-9]{2})$/
+  if (!timecodeRegex.test(cutTime)) {
+    addLogEntry('Invalid timecode format. Use HH:MM:SS:FF (e.g., 00:01:30:15)', 'error')
+    return
+  }
+
+  // Disable button during operation
+  cutButton.disabled = true
+  cutButton.textContent = 'Cutting...'
+
+  addLogEntry(`Performing cut at ${cutTime}`, 'info')
+
+  // Call ExtendScript function to perform the cut
+  cs.evalScript(`cutAllTracksAtTime('${cutTime}')`, function (result) {
+    console.log('Cut operation result:', result)
+
+    try {
+      const resultData = JSON.parse(result)
+      if (resultData.success) {
+        addLogEntry(`Cut completed at ${cutTime}`, 'success')
+        cutTimeInput.value = '' // Clear the input
+      } else {
+        addLogEntry(`Cut failed: ${resultData.error}`, 'error')
+      }
+    } catch (e) {
+      addLogEntry(`Cut operation completed`, 'success')
+      cutTimeInput.value = '' // Clear the input
+    }
+
+    // Re-enable button
+    cutButton.disabled = false
+    cutButton.textContent = 'Cut'
+  })
+}
+
 // Function to refresh sequence info
 function refreshSequenceInfo() {
   addLogEntry('Refreshing sequence info...', 'info')

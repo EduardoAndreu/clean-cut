@@ -236,6 +236,10 @@
         margin-bottom: 20px;
       }
 
+      .cut-tracks-section {
+        margin-bottom: 20px;
+      }
+
       .details-container {
         padding: 12px;
         background-color: #383838;
@@ -304,6 +308,113 @@
         <div id="detail-audio-tracks" class="details-list">None</div>
         <p><strong>Selection:</strong></p>
         <div id="detail-selection" class="details-list">None</div>
+      </div>
+    </div>
+
+    <div class="export-media-section">
+      <label class="status-label">Export Media</label>
+      <div class="details-container">
+        <p><strong>Output Folder:</strong></p>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px">
+          <input
+            type="text"
+            id="export-folder-input"
+            placeholder="/path/to/export/folder"
+            style="
+              flex: 1;
+              padding: 6px 8px;
+              background-color: #2d2d2d;
+              border: 1px solid #505050;
+              border-radius: 4px;
+              color: #fff;
+              font-family: 'SF Mono', Monaco, monospace;
+              font-size: 11px;
+            "
+          />
+          <button
+            id="export-button"
+            onclick="performAudioExport()"
+            style="
+              padding: 6px 12px;
+              background-color: #4caf50;
+              border: none;
+              border-radius: 4px;
+              color: white;
+              font-size: 11px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.2s ease;
+            "
+            onmouseover="this.style.backgroundColor='#388e3c'"
+            onmouseout="this.style.backgroundColor='#4caf50'"
+          >
+            Export Audio
+          </button>
+        </div>
+        <div style="display: flex; gap: 8px; margin-bottom: 8px">
+          <label style="display: flex; align-items: center; gap: 4px; font-size: 10px; color: #ccc">
+            <input type="radio" name="export-range" value="entire" checked style="margin: 0" />
+            Entire Sequence
+          </label>
+          <label style="display: flex; align-items: center; gap: 4px; font-size: 10px; color: #ccc">
+            <input type="radio" name="export-range" value="inout" style="margin: 0" />
+            In/Out Points
+          </label>
+          <label style="display: flex; align-items: center; gap: 4px; font-size: 10px; color: #ccc">
+            <input type="radio" name="export-range" value="workarea" style="margin: 0" />
+            Work Area
+          </label>
+        </div>
+        <p style="font-size: 10px; color: #999; margin: 0">
+          Exports audio as WAV file for analysis by Clean-Cut app
+        </p>
+      </div>
+    </div>
+
+    <div class="cut-tracks-section">
+      <label class="status-label">Cut All Tracks</label>
+      <div class="details-container">
+        <p><strong>Cut Time:</strong></p>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px">
+          <input
+            type="text"
+            id="cut-time-input"
+            placeholder="00:00:00:00"
+            style="
+              flex: 1;
+              padding: 6px 8px;
+              background-color: #2d2d2d;
+              border: 1px solid #505050;
+              border-radius: 4px;
+              color: #fff;
+              font-family: 'SF Mono', Monaco, monospace;
+              font-size: 11px;
+            "
+            maxlength="11"
+          />
+          <button
+            id="cut-button"
+            onclick="performCutAtTime()"
+            style="
+              padding: 6px 12px;
+              background-color: #f44336;
+              border: none;
+              border-radius: 4px;
+              color: white;
+              font-size: 11px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.2s ease;
+            "
+            onmouseover="this.style.backgroundColor='#d32f2f'"
+            onmouseout="this.style.backgroundColor='#f44336'"
+          >
+            Cut
+          </button>
+        </div>
+        <p style="font-size: 10px; color: #999; margin: 0">
+          Enter time in HH:MM:SS:FF format (e.g., 00:01:30:15)
+        </p>
       </div>
     </div>
 

@@ -431,3 +431,143 @@ function getSelectedClipsInfo() {
     })
   }
 }
+
+/**
+ * Cuts all tracks at a specified timecode
+ * @param {string} timecode - Time in HH:MM:SS:FF format
+ * @returns {string} JSON string with operation result
+ */
+function cutAllTracksAtTime(timecode) {
+  try {
+    if (!app.project || !app.project.activeSequence) {
+      return JSON.stringify({
+        success: false,
+        error: 'No active sequence'
+      })
+    }
+
+    var sequence = app.project.activeSequence
+
+    // Parse timecode (HH:MM:SS:FF)
+    var parts = timecode.split(':')
+    if (parts.length !== 4) {
+      return JSON.stringify({
+        success: false,
+        error: 'Invalid timecode format'
+      })
+    }
+
+    var hours = parseInt(parts[0])
+    var minutes = parseInt(parts[1])
+    var seconds = parseInt(parts[2])
+    var frames = parseInt(parts[3])
+
+    // Convert to total seconds
+    var totalSeconds = hours * 3600 + minutes * 60 + seconds
+
+    // Get frame rate to calculate frame duration
+    var frameRate = 25 // Default, will be updated based on sequence
+    try {
+      var videoDisplayFormat = sequence.videoDisplayFormat
+      var frameRateMap = {
+        100: 24,
+        101: 25,
+        102: 29.97,
+        103: 29.97,
+        104: 30,
+        105: 50,
+        106: 59.94,
+        107: 59.94,
+        108: 60,
+        110: 23.976,
+        113: 48
+      }
+      frameRate = frameRateMap[videoDisplayFormat] || 25
+    } catch (e) {
+      frameRate = 25
+    }
+
+    // Add frame time to total seconds
+    totalSeconds += frames / frameRate
+
+    // Convert to ticks (254016000000 ticks per second)
+    var ticksPerSecond = 254016000000
+    var cutTimeTicks = Math.round(totalSeconds * ticksPerSecond)
+
+    // Move the playhead to the cut position
+    sequence.setPlayerPosition(cutTimeTicks.toString())
+
+    // Enable QE DOM for razor functionality
+    try {
+      app.enableQE()
+      var qeSequence = qe.project.getActiveSequence()
+
+      if (!qeSequence) {
+        return JSON.stringify({
+          success: false,
+          error: 'Could not access QE sequence'
+        })
+      }
+
+      // Get the current playhead position in QE format
+      var currentTimecode = qeSequence.CTI.timecode
+      var cutsPerformed = 0
+
+      // Cut all video tracks at the playhead position
+      try {
+        for (var v = 0; v < qeSequence.numVideoTracks; v++) {
+          var videoTrack = qeSequence.getVideoTrackAt(v)
+          if (videoTrack) {
+            videoTrack.razor(currentTimecode)
+            cutsPerformed++
+          }
+        }
+      } catch (videoError) {
+        // Continue with audio tracks even if video fails
+      }
+
+      // Cut all audio tracks at the playhead position
+      try {
+        for (var a = 0; a < qeSequence.numAudioTracks; a++) {
+          var audioTrack = qeSequence.getAudioTrackAt(a)
+          if (audioTrack) {
+            audioTrack.razor(currentTimecode)
+            cutsPerformed++
+          }
+        }
+      } catch (audioError) {
+        // Track any audio errors
+      }
+
+      return JSON.stringify({
+        success: true,
+        message: 'Cut completed at ' + timecode,
+        cutsPerformed: cutsPerformed,
+        timecode: timecode,
+        totalSeconds: totalSeconds.toFixed(3)
+      })
+    } catch (qeError) {
+      // Fallback to standard razor if QE fails
+      try {
+        sequence.razor(cutTimeTicks.toString())
+        return JSON.stringify({
+          success: true,
+          message: 'Cut completed at ' + timecode + ' (standard razor)',
+          cutsPerformed: 1,
+          timecode: timecode,
+          totalSeconds: totalSeconds.toFixed(3)
+        })
+      } catch (fallbackError) {
+        return JSON.stringify({
+          success: false,
+          error: 'Cut failed: ' + fallbackError.toString()
+        })
+      }
+    }
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: 'Cut operation error: ' + error.toString()
+    })
+  }
+}
