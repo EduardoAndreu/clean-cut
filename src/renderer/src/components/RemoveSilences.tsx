@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-function Controls(): React.JSX.Element {
+function RemoveSilences(): React.JSX.Element {
   const [silenceThreshold, setSilenceThreshold] = useState<number>(-30)
   const [minSilenceLen, setMinSilenceLen] = useState<number>(1000)
   const [silencePadding, setSilencePadding] = useState<number>(100)
@@ -447,7 +447,7 @@ Check Premiere Pro for the results.`)
 
   return (
     <div style={containerStyle}>
-      <h2 style={titleStyle}>Clean-Cut for Premiere Pro</h2>
+      <h2 style={titleStyle}>Remove Silences</h2>
 
       {/* Connection Status */}
       <div style={connectionStatusStyle}>
@@ -945,4 +945,4 @@ Check Premiere Pro for the results.`)
   )
 }
 
-export default Controls
+export default RemoveSilences

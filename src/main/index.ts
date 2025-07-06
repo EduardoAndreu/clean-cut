@@ -88,8 +88,12 @@ async function processAudioFile(filePath: string, params: CleanCutArgs): Promise
 function createWindow(): void {
   // Create the browser window.
   mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width: 450,
+    height: 800,
+    minWidth: 450,
+    minHeight: 600,
+    maxWidth: 800,
+    maxHeight: 800,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
