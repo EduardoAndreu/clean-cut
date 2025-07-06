@@ -9,15 +9,32 @@
   <body>
     <div class="header">
       <h1 class="title">Clean-Cut</h1>
-      <p class="subtitle">Premiere Pro Extension</p>
+      <p class="subtitle">Debug Panel - Premiere Pro</p>
+    </div>
+
+    <div class="info-section">
+      <div class="info-box">
+        <div class="info-title">How it works:</div>
+        <div class="info-text">
+          This extension connects to your Clean-Cut desktop app. It is designed to have all the
+          testing functionality to support the Clean-Cut app. It is not designed to be used as a
+          standalone tool, and it is hidden by default. If you are a developer, you can edit the
+          'AutoVisible' tag in the manifest.xml file to 'true' to make it visible.
+        </div>
+      </div>
     </div>
 
     <div class="status-section">
       <label class="status-label">Connection Status</label>
       <div class="status-container">
         <div class="status-header">
-          <div id="status-indicator" class="status-indicator disconnected"></div>
-          <span id="status-text" class="status-text">Disconnected from Clean-Cut app</span>
+          <span class="status-content">
+            <div id="status-indicator" class="status-indicator disconnected"></div>
+            <span id="status-text" class="status-text">Connected to Clean-Cut app</span>
+          </span>
+          <button id="reconnect-button" class="refresh-button" onclick="reconnectToApp()">
+            Disconnect
+          </button>
         </div>
         <div id="status-details" class="status-details">Port: ---</div>
       </div>
@@ -141,25 +158,8 @@
       </div>
     </div>
 
-    <div class="info-section">
-      <div class="info-box">
-        <div class="info-title">How it works:</div>
-        <div class="info-text">
-          This extension connects to your Clean-Cut desktop app. When you process audio in the main
-          app using "Process from Premiere Pro" mode, this extension will automatically export your
-          active sequence audio and perform cuts based on detected silence.
-        </div>
-      </div>
-    </div>
-
-    <div class="action-section">
-      <button id="reconnect-button" class="action-button" onclick="reconnectToApp()">
-        Reconnect to Clean-Cut App
-      </button>
-    </div>
-
     <div class="logs-section">
-      <label class="status-label">Activity Log</label>
+      <label class="status-label">Debug Log</label>
       <div id="logs-container" class="logs-container">
         <div class="log-entry">
           <span class="log-timestamp">[00:00:00]</span>
