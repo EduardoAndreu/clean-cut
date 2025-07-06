@@ -463,30 +463,62 @@ function getPresetFilePath() {
 }
 
 /**
- * Exports sequence audio using local WAV preset
+ * Exports sequence audio using Adobe Media Encoder API for better track control
  * @param {string} outputFolder - Folder path for export (optional)
+ * @param {string} selectedTracksJson - JSON string array of selected audio track indices
  * @returns {string} JSON string with operation result
  */
-function exportSequenceAudio(outputFolder) {
+function exportSequenceAudio(outputFolder, selectedTracksJson) {
   try {
+    var debugInfo = {
+      method: 'QE_DOM',
+      outputFolder: outputFolder,
+      selectedTracksJson: selectedTracksJson,
+      selectedTracksType: typeof selectedTracksJson,
+      selectedTracksLength: selectedTracksJson ? selectedTracksJson.length : 'null'
+    }
+
+    logMessage('=== EXPORT SEQUENCE AUDIO VIA QE DOM ===')
+    logMessage('Output folder: ' + outputFolder)
+    logMessage('Selected tracks JSON: ' + selectedTracksJson)
+
     if (!app.project || !app.project.activeSequence) {
       return JSON.stringify({
         success: false,
-        error: 'No active sequence'
+        error: 'No active sequence',
+        debug: debugInfo
       })
     }
 
     var sequence = app.project.activeSequence
+    var selectedTracks = []
 
-    // Generate unique filename
+    // Parse selected tracks if provided
+    if (selectedTracksJson && selectedTracksJson.length > 0) {
+      try {
+        selectedTracks = JSON.parse(selectedTracksJson)
+        logMessage('Selected tracks for export: ' + selectedTracks.join(', '))
+        debugInfo.selectedTracksParsed = selectedTracks
+      } catch (parseError) {
+        debugInfo.parseError = parseError.toString()
+        return JSON.stringify({
+          success: false,
+          error: 'Invalid selected tracks format: ' + parseError.toString(),
+          debug: debugInfo
+        })
+      }
+    } else {
+      logMessage('No specific tracks selected, exporting all audio tracks')
+      debugInfo.selectedTracksParsed = 'none - exporting all'
+    }
+
+    // Generate unique filename and output path
     var timestamp = new Date().getTime()
     var sequenceName = sequence.name.replace(/[^a-zA-Z0-9]/g, '_')
     var filename = sequenceName + '_audio_' + timestamp + '.wav'
 
-    // Determine output path
     var outputPath
     if (outputFolder && outputFolder.length > 0) {
-      // Use provided folder
       outputPath = outputFolder
       var lastChar = outputPath.charAt(outputPath.length - 1)
       if (lastChar !== '/' && lastChar !== '\\') {
@@ -494,59 +526,187 @@ function exportSequenceAudio(outputFolder) {
       }
       outputPath += filename
     } else {
-      // Use system temp directory
       try {
         var tempDir = Folder.temp.fsName
         outputPath = tempDir + '/' + filename
       } catch (e) {
-        outputPath = '~/Desktop/' + filename // Fallback
+        outputPath = '~/Desktop/' + filename
       }
     }
 
-    // Get path to bundled preset file
+    debugInfo.outputPath = outputPath
+
+    // Get preset file
     var presetResult = getPresetFilePath()
     if (!presetResult.path) {
       return JSON.stringify({
         success: false,
         error: 'Preset file not found',
-        debug: presetResult.debug
+        debug: debugInfo
       })
     }
     var audioPresetPath = presetResult.path
+    debugInfo.presetPath = audioPresetPath
 
-    try {
-      // Export using the local preset
-      // workAreaType: 0 = entire sequence, 1 = in/out points, 2 = work area
-      var workAreaType = 0 // Export entire sequence
-      var success = sequence.exportAsMediaDirect(outputPath, audioPresetPath, workAreaType)
+    // Enable QE DOM for better track control
+    app.enableQE()
+    var qeSequence = qe.project.getActiveSequence()
 
-      if (success) {
-        return JSON.stringify({
-          success: true,
-          outputPath: outputPath,
-          presetUsed: audioPresetPath,
-          message: 'Audio export started successfully',
-          debug: presetResult.debug
-        })
-      } else {
-        return JSON.stringify({
-          success: false,
-          error: 'Export failed - exportAsMediaDirect returned false',
-          debug: presetResult.debug
-        })
-      }
-    } catch (exportError) {
+    if (!qeSequence) {
       return JSON.stringify({
         success: false,
-        error: 'Export error: ' + exportError.toString(),
-        presetPath: audioPresetPath,
-        debug: presetResult.debug
+        error: 'QE sequence not available',
+        debug: debugInfo
       })
     }
+
+    logMessage('Using QE DOM for track control')
+    debugInfo.qeAvailable = true
+    debugInfo.totalQETracks = qeSequence.numAudioTracks
+
+    // Store original track states
+    var originalStates = []
+    for (var i = 0; i < qeSequence.numAudioTracks; i++) {
+      var qeTrack = qeSequence.getAudioTrackAt(i)
+      if (qeTrack) {
+        var originalState = {
+          index: i,
+          trackNumber: i + 1,
+          muted: false,
+          solo: false
+        }
+
+        // Get original states
+        try {
+          if (typeof qeTrack.isMuted === 'function') {
+            originalState.muted = qeTrack.isMuted()
+          }
+          if (typeof qeTrack.isSolo === 'function') {
+            originalState.solo = qeTrack.isSolo()
+          }
+        } catch (stateError) {
+          logMessage(
+            'Error getting original state for track ' + (i + 1) + ': ' + stateError.toString()
+          )
+        }
+
+        originalStates.push(originalState)
+        logMessage(
+          'Track ' +
+            (i + 1) +
+            ' original state - muted: ' +
+            originalState.muted +
+            ', solo: ' +
+            originalState.solo
+        )
+      }
+    }
+
+    try {
+      // Apply selective track control using QE DOM
+      if (selectedTracks.length > 0) {
+        logMessage('Applying selective track control using QE DOM...')
+
+        for (var j = 0; j < qeSequence.numAudioTracks; j++) {
+          var qeTrack = qeSequence.getAudioTrackAt(j)
+          var trackNumber = j + 1
+          var shouldExport = selectedTracks.indexOf(trackNumber) !== -1
+
+          if (qeTrack) {
+            try {
+              // Use solo approach for cleaner selective export
+              if (typeof qeTrack.setSolo === 'function') {
+                qeTrack.setSolo(shouldExport)
+                logMessage('Track ' + trackNumber + ' solo set to: ' + shouldExport)
+              } else if (typeof qeTrack.setMute === 'function') {
+                // Fallback to mute approach - mute non-selected tracks
+                qeTrack.setMute(!shouldExport)
+                logMessage('Track ' + trackNumber + ' muted: ' + !shouldExport)
+              }
+            } catch (trackControlError) {
+              logMessage(
+                'Error controlling track ' + trackNumber + ': ' + trackControlError.toString()
+              )
+            }
+          }
+        }
+
+        debugInfo.trackControlMethod = 'QE DOM solo/mute'
+        debugInfo.tracksProcessed = qeSequence.numAudioTracks
+      }
+
+      // Export using standard sequence with QE-modified states
+      logMessage('Starting export with QE DOM controlled track states...')
+      var exportResult = sequence.exportAsMediaDirect(outputPath, audioPresetPath, 0)
+
+      if (!exportResult) {
+        throw new Error('Export failed - exportAsMediaDirect returned false')
+      }
+
+      debugInfo.exportMethod = 'exportAsMediaDirect with QE DOM'
+      debugInfo.exportResult = exportResult
+    } finally {
+      // Always restore original track states
+      try {
+        logMessage('Restoring original track states...')
+
+        for (var k = 0; k < originalStates.length; k++) {
+          var stateInfo = originalStates[k]
+          var qeTrack = qeSequence.getAudioTrackAt(stateInfo.index)
+
+          if (qeTrack) {
+            try {
+              // Restore solo state
+              if (typeof qeTrack.setSolo === 'function') {
+                qeTrack.setSolo(stateInfo.solo)
+                logMessage(
+                  'Restored track ' + stateInfo.trackNumber + ' solo to: ' + stateInfo.solo
+                )
+              }
+
+              // Restore mute state
+              if (typeof qeTrack.setMute === 'function') {
+                qeTrack.setMute(stateInfo.muted)
+                logMessage(
+                  'Restored track ' + stateInfo.trackNumber + ' mute to: ' + stateInfo.muted
+                )
+              }
+            } catch (restoreError) {
+              logMessage(
+                'Error restoring track ' + stateInfo.trackNumber + ': ' + restoreError.toString()
+              )
+            }
+          }
+        }
+
+        logMessage('Restored original states for ' + originalStates.length + ' tracks')
+      } catch (restoreError) {
+        logMessage('Error during track state restoration: ' + restoreError.toString())
+        debugInfo.restoreError = restoreError.toString()
+      }
+    }
+
+    var exportMessage = 'Audio export completed successfully'
+    if (selectedTracks.length > 0) {
+      exportMessage += ' for tracks: ' + selectedTracks.join(', ')
+    }
+    exportMessage += ' using QE DOM'
+
+    debugInfo.success = true
+
+    return JSON.stringify({
+      success: true,
+      outputPath: outputPath,
+      presetUsed: audioPresetPath,
+      message: exportMessage,
+      selectedTracks: selectedTracks,
+      debug: debugInfo
+    })
   } catch (error) {
     return JSON.stringify({
       success: false,
-      error: 'Audio export error: ' + error.toString()
+      error: 'QE DOM export error: ' + error.toString(),
+      debug: debugInfo
     })
   }
 }

@@ -4,6 +4,7 @@ const cs = new CSInterface()
 let ws = null
 let reconnectAttempts = 0
 const maxReconnectAttempts = 10
+const WEBSOCKET_PORT = 8085
 
 // Logging functionality
 function addLogEntry(message, type = 'info') {
@@ -58,6 +59,77 @@ function updateStatus(message, connectionState = 'disconnected') {
     reconnectButton.textContent = 'Reconnect to Clean-Cut App'
     reconnectButton.disabled = false
   }
+}
+
+// Function to update the port display
+function updatePortDisplay(port) {
+  const statusDetails = document.getElementById('status-details')
+  if (statusDetails) {
+    statusDetails.textContent = `Port: ${port}`
+  }
+}
+
+// Function to populate audio track checkboxes
+function populateAudioTrackCheckboxes(sequenceDetails) {
+  const checkboxContainer = document.getElementById('audio-track-checkboxes')
+
+  if (
+    !sequenceDetails ||
+    !sequenceDetails.audioTrackInfo ||
+    sequenceDetails.audioTrackInfo.length === 0
+  ) {
+    checkboxContainer.innerHTML =
+      '<div class="no-tracks-message">No audio tracks detected. Please refresh sequence info.</div>'
+    return
+  }
+
+  // Clear existing content
+  checkboxContainer.innerHTML = ''
+
+  // Create checkboxes for each audio track
+  sequenceDetails.audioTrackInfo.forEach((track, index) => {
+    const trackItem = document.createElement('div')
+    trackItem.className = 'track-checkbox-item'
+
+    const checkbox = document.createElement('input')
+    checkbox.type = 'checkbox'
+    checkbox.id = `track-${track.index}`
+    checkbox.value = track.index
+    checkbox.checked = true // Default to checked
+
+    const label = document.createElement('label')
+    label.htmlFor = `track-${track.index}`
+    label.className = `track-checkbox-label ${track.muted ? 'track-muted' : ''}`
+    label.textContent = `Track ${track.index}: ${track.name} ${track.muted ? '(Muted)' : ''}`
+
+    trackItem.appendChild(checkbox)
+    trackItem.appendChild(label)
+    checkboxContainer.appendChild(trackItem)
+  })
+}
+
+// Function to select all audio tracks
+function selectAllTracks() {
+  const checkboxes = document.querySelectorAll('#audio-track-checkboxes input[type="checkbox"]')
+  checkboxes.forEach((checkbox) => {
+    checkbox.checked = true
+  })
+}
+
+// Function to deselect all audio tracks
+function deselectAllTracks() {
+  const checkboxes = document.querySelectorAll('#audio-track-checkboxes input[type="checkbox"]')
+  checkboxes.forEach((checkbox) => {
+    checkbox.checked = false
+  })
+}
+
+// Function to get selected audio track indices
+function getSelectedAudioTracks() {
+  const checkboxes = document.querySelectorAll(
+    '#audio-track-checkboxes input[type="checkbox"]:checked'
+  )
+  return Array.from(checkboxes).map((checkbox) => parseInt(checkbox.value))
 }
 
 // Function to update the sequence display
@@ -130,8 +202,13 @@ function updateSequenceDetailsDisplay(details) {
         trackDiv.textContent = `Track ${track.index}: ${track.name} (${track.muted ? 'Muted' : 'Active'})`
         audioTracksEl.appendChild(trackDiv)
       })
+
+      // Populate audio track checkboxes for export section
+      populateAudioTrackCheckboxes(details)
     } else {
       audioTracksEl.textContent = 'None'
+      // Clear checkboxes if no tracks
+      populateAudioTrackCheckboxes(null)
     }
 
     // Display selection details
@@ -192,14 +269,31 @@ function performAudioExport() {
   const exportButton = document.getElementById('export-button')
   const exportFolder = exportFolderInput.value.trim()
 
+  // Get selected audio tracks
+  const selectedTracks = getSelectedAudioTracks()
+
+  if (selectedTracks.length === 0) {
+    addLogEntry('No audio tracks selected for export', 'error')
+    return
+  }
+
   // Disable button during operation
   exportButton.disabled = true
   exportButton.textContent = 'Exporting...'
 
-  addLogEntry('Starting audio export...', 'info')
+  addLogEntry(
+    `Starting audio export for ${selectedTracks.length} track(s): ${selectedTracks.join(', ')}`,
+    'info'
+  )
 
-  // Call ExtendScript function to perform the export
-  cs.evalScript(`exportSequenceAudio('${exportFolder}')`, function (result) {
+  // Call ExtendScript function to perform the export with selected tracks
+  const selectedTracksJson = JSON.stringify(selectedTracks)
+  addLogEntry(`Calling ExtendScript with selected tracks: ${selectedTracksJson}`, 'info')
+
+  const scriptCall = `exportSequenceAudio('${exportFolder}', '${selectedTracksJson}')`
+  addLogEntry(`ExtendScript call: ${scriptCall}`, 'info')
+
+  cs.evalScript(scriptCall, function (result) {
     console.log('Export operation result:', result)
 
     try {
@@ -338,10 +432,13 @@ function connect() {
   try {
     console.log('Attempting to connect to WebSocket server...')
     updateStatus('Connecting to Clean-Cut app...', 'connecting')
-    addLogEntry('Attempting to connect to Clean-Cut app...', 'info')
+    addLogEntry(`Attempting to connect to Clean-Cut app on port ${WEBSOCKET_PORT}...`, 'info')
 
-    // Create WebSocket connection to localhost:8085
-    ws = new WebSocket('ws://localhost:8085')
+    // Update port display
+    updatePortDisplay(WEBSOCKET_PORT)
+
+    // Create WebSocket connection
+    ws = new WebSocket(`ws://localhost:${WEBSOCKET_PORT}`)
 
     // Handle connection open
     ws.onopen = function (event) {
@@ -517,6 +614,9 @@ function connect() {
       updateStatus('Disconnected from Clean-Cut app', 'disconnected')
       addLogEntry('Connection closed', 'warning')
 
+      // Clear port display when disconnected
+      updatePortDisplay('---')
+
       // Attempt to reconnect after delay if not at max attempts
       if (reconnectAttempts < maxReconnectAttempts) {
         reconnectAttempts++
@@ -572,6 +672,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Initialize sequence display
   updateSequenceDisplay(null)
+
+  // Initialize port display
+  updatePortDisplay('---')
+
+  // Initialize audio track checkboxes
+  populateAudioTrackCheckboxes(null)
 
   // Start connection
   connect()
