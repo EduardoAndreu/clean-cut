@@ -132,6 +132,33 @@ function getSelectedAudioTracks() {
   return Array.from(checkboxes).map((checkbox) => parseInt(checkbox.value))
 }
 
+// Variable to store selected range
+let selectedRange = 'entire'
+
+// Function to handle range selection
+function selectRange(range) {
+  selectedRange = range
+
+  // Update button states
+  const buttons = document.querySelectorAll('.range-button')
+  buttons.forEach((button) => {
+    button.classList.remove('active')
+  })
+
+  // Set active button
+  const activeButton = document.getElementById(`range-${range}`)
+  if (activeButton) {
+    activeButton.classList.add('active')
+  }
+
+  addLogEntry(`Range selected: ${range}`, 'info')
+}
+
+// Function to get selected range
+function getSelectedRange() {
+  return selectedRange
+}
+
 // Function to update the sequence display
 function updateSequenceDisplay(sequenceInfo) {
   const sequenceNameElement = document.getElementById('sequence-name')
@@ -277,6 +304,9 @@ function performAudioExport() {
     return
   }
 
+  // Get selected range
+  const selectedRange = getSelectedRange()
+
   // Disable button during operation
   exportButton.disabled = true
   exportButton.textContent = 'Exporting...'
@@ -285,12 +315,13 @@ function performAudioExport() {
     `Starting audio export for ${selectedTracks.length} track(s): ${selectedTracks.join(', ')}`,
     'info'
   )
+  addLogEntry(`Export range: ${selectedRange}`, 'info')
 
-  // Call ExtendScript function to perform the export with selected tracks
+  // Call ExtendScript function to perform the export with selected tracks and range
   const selectedTracksJson = JSON.stringify(selectedTracks)
   addLogEntry(`Calling ExtendScript with selected tracks: ${selectedTracksJson}`, 'info')
 
-  const scriptCall = `exportSequenceAudio('${exportFolder}', '${selectedTracksJson}')`
+  const scriptCall = `exportSequenceAudio('${exportFolder}', '${selectedTracksJson}', '${selectedRange}')`
   addLogEntry(`ExtendScript call: ${scriptCall}`, 'info')
 
   cs.evalScript(scriptCall, function (result) {

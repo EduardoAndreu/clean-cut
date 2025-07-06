@@ -329,9 +329,7 @@ body {
 }
 
 .track-selection-section {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid #444;
+  margin-bottom: 16px;
 }
 
 .track-checkboxes {
@@ -405,4 +403,53 @@ body {
 
 .track-control-button:active {
   background-color: #333;
+}
+
+.separator {
+  height: 1px;
+  background-color: #505050;
+  margin: 16px 0;
+}
+
+.separator + p {
+  margin-top: 16px;
+}
+
+.range-selection-section {
+  margin-bottom: 16px;
+}
+
+.range-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.range-button {
+  flex: 1;
+  padding: 8px 12px;
+  background-color: #444;
+  border: 1px solid #666;
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.range-button:hover {
+  background-color: #555;
+  border-color: #777;
+}
+
+.range-button.active {
+  background-color: #2196f3;
+  border-color: #2196f3;
+  color: #ffffff;
+}
+
+.range-button.active:hover {
+  background-color: #1976d2;
+  border-color: #1976d2;
 }

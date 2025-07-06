@@ -463,24 +463,112 @@ function getPresetFilePath() {
 }
 
 /**
+ * Gets the time range of selected clips across all tracks
+ * @param {object} sequence - The active sequence
+ * @returns {object} Object with success, startTime, endTime, and error properties
+ */
+function getSelectedClipsTimeRange(sequence) {
+  try {
+    var earliestStart = Number.MAX_VALUE
+    var latestEnd = 0
+    var selectedClipsFound = 0
+
+    logMessage('Analyzing selected clips across all tracks...')
+
+    // Check video tracks
+    for (var v = 0; v < sequence.videoTracks.numTracks; v++) {
+      var videoTrack = sequence.videoTracks[v]
+      for (var vc = 0; vc < videoTrack.clips.numItems; vc++) {
+        var clip = videoTrack.clips[vc]
+        if (clip && clip.isSelected()) {
+          selectedClipsFound++
+          var startTime = parseFloat(clip.start.seconds)
+          var endTime = parseFloat(clip.end.seconds)
+
+          if (startTime < earliestStart) {
+            earliestStart = startTime
+          }
+          if (endTime > latestEnd) {
+            latestEnd = endTime
+          }
+
+          logMessage(
+            'Selected video clip on track ' + (v + 1) + ': ' + startTime + 's to ' + endTime + 's'
+          )
+        }
+      }
+    }
+
+    // Check audio tracks
+    for (var a = 0; a < sequence.audioTracks.numTracks; a++) {
+      var audioTrack = sequence.audioTracks[a]
+      for (var ac = 0; ac < audioTrack.clips.numItems; ac++) {
+        var clip = audioTrack.clips[ac]
+        if (clip && clip.isSelected()) {
+          selectedClipsFound++
+          var startTime = parseFloat(clip.start.seconds)
+          var endTime = parseFloat(clip.end.seconds)
+
+          if (startTime < earliestStart) {
+            earliestStart = startTime
+          }
+          if (endTime > latestEnd) {
+            latestEnd = endTime
+          }
+
+          logMessage(
+            'Selected audio clip on track ' + (a + 1) + ': ' + startTime + 's to ' + endTime + 's'
+          )
+        }
+      }
+    }
+
+    if (selectedClipsFound === 0) {
+      return {
+        success: false,
+        error: 'No clips are currently selected'
+      }
+    }
+
+    logMessage('Found ' + selectedClipsFound + ' selected clips total')
+    logMessage('Combined range: ' + earliestStart + 's to ' + latestEnd + 's')
+
+    return {
+      success: true,
+      startTime: earliestStart,
+      endTime: latestEnd,
+      clipCount: selectedClipsFound
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: 'Error analyzing selected clips: ' + error.toString()
+    }
+  }
+}
+
+/**
  * Exports sequence audio using Adobe Media Encoder API for better track control
  * @param {string} outputFolder - Folder path for export (optional)
  * @param {string} selectedTracksJson - JSON string array of selected audio track indices
+ * @param {string} selectedRange - Range type: 'entire', 'inout', 'selected'
  * @returns {string} JSON string with operation result
  */
-function exportSequenceAudio(outputFolder, selectedTracksJson) {
+function exportSequenceAudio(outputFolder, selectedTracksJson, selectedRange) {
   try {
     var debugInfo = {
       method: 'QE_DOM',
       outputFolder: outputFolder,
       selectedTracksJson: selectedTracksJson,
       selectedTracksType: typeof selectedTracksJson,
-      selectedTracksLength: selectedTracksJson ? selectedTracksJson.length : 'null'
+      selectedTracksLength: selectedTracksJson ? selectedTracksJson.length : 'null',
+      selectedRange: selectedRange || 'entire'
     }
 
     logMessage('=== EXPORT SEQUENCE AUDIO VIA QE DOM ===')
     logMessage('Output folder: ' + outputFolder)
     logMessage('Selected tracks JSON: ' + selectedTracksJson)
+    logMessage('Selected range: ' + (selectedRange || 'entire'))
 
     if (!app.project || !app.project.activeSequence) {
       return JSON.stringify({
@@ -635,9 +723,91 @@ function exportSequenceAudio(outputFolder, selectedTracksJson) {
         debugInfo.tracksProcessed = qeSequence.numAudioTracks
       }
 
+      // Handle different range types
+      var workAreaType = 0 // Default: entire sequence
+      var rangeType = selectedRange || 'entire'
+      var originalInPoint = null
+      var originalOutPoint = null
+      var tempInOutSet = false
+
+      if (rangeType === 'inout') {
+        workAreaType = 1 // In/Out points
+        logMessage('Using In/Out points for export')
+      } else if (rangeType === 'selected') {
+        // For selected clips, we need to get their time range and set temporary in/out points
+        logMessage('Getting selected clips range...')
+
+        try {
+          // Store original in/out points
+          originalInPoint = sequence.getInPoint()
+          originalOutPoint = sequence.getOutPoint()
+
+          // Get selected clips and find their time range
+          var selectedClipsRange = getSelectedClipsTimeRange(sequence)
+
+          if (selectedClipsRange.success) {
+            logMessage(
+              'Selected clips range: ' +
+                selectedClipsRange.startTime +
+                ' to ' +
+                selectedClipsRange.endTime +
+                ' seconds'
+            )
+
+            // Convert to ticks (254016000000 ticks per second)
+            var ticksPerSecond = 254016000000
+            var startTicks = Math.round(selectedClipsRange.startTime * ticksPerSecond)
+            var endTicks = Math.round(selectedClipsRange.endTime * ticksPerSecond)
+
+            // Set temporary in/out points
+            sequence.setInPoint(startTicks.toString())
+            sequence.setOutPoint(endTicks.toString())
+            tempInOutSet = true
+
+            workAreaType = 1 // Use in/out points method
+            logMessage('Set temporary in/out points for selected clips export')
+
+            debugInfo.selectedClipsStart = selectedClipsRange.startTime
+            debugInfo.selectedClipsEnd = selectedClipsRange.endTime
+            debugInfo.tempInOutSet = true
+          } else {
+            logMessage('No valid selected clips found, falling back to entire timeline')
+            workAreaType = 0 // Fallback to entire sequence
+            debugInfo.selectedClipsError = selectedClipsRange.error
+          }
+        } catch (selectedError) {
+          logMessage('Error handling selected clips: ' + selectedError.toString())
+          workAreaType = 0 // Fallback to entire sequence
+          debugInfo.selectedClipsError = selectedError.toString()
+        }
+      } else {
+        workAreaType = 0 // Entire sequence
+        logMessage('Using entire timeline for export')
+      }
+
+      debugInfo.workAreaType = workAreaType
+      debugInfo.rangeType = rangeType
+
       // Export using standard sequence with QE-modified states
       logMessage('Starting export with QE DOM controlled track states...')
-      var exportResult = sequence.exportAsMediaDirect(outputPath, audioPresetPath, 0)
+      var exportResult = sequence.exportAsMediaDirect(outputPath, audioPresetPath, workAreaType)
+
+      // Restore original in/out points if we set temporary ones
+      if (tempInOutSet) {
+        try {
+          logMessage('Restoring original in/out points...')
+          if (originalInPoint !== null) {
+            sequence.setInPoint(originalInPoint.toString())
+          }
+          if (originalOutPoint !== null) {
+            sequence.setOutPoint(originalOutPoint.toString())
+          }
+          logMessage('Original in/out points restored')
+        } catch (restoreError) {
+          logMessage('Error restoring in/out points: ' + restoreError.toString())
+          debugInfo.restoreInOutError = restoreError.toString()
+        }
+      }
 
       if (!exportResult) {
         throw new Error('Export failed - exportAsMediaDirect returned false')
@@ -690,7 +860,17 @@ function exportSequenceAudio(outputFolder, selectedTracksJson) {
     if (selectedTracks.length > 0) {
       exportMessage += ' for tracks: ' + selectedTracks.join(', ')
     }
-    exportMessage += ' using QE DOM'
+
+    var rangeDescription = ''
+    if (selectedRange === 'inout') {
+      rangeDescription = ' (In/Out points)'
+    } else if (selectedRange === 'selected') {
+      rangeDescription = ' (Selected clips)'
+    } else {
+      rangeDescription = ' (Entire timeline)'
+    }
+
+    exportMessage += rangeDescription + ' using QE DOM'
 
     debugInfo.success = true
 
