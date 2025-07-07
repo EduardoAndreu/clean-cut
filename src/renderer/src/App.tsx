@@ -10,7 +10,7 @@ function App(): React.JSX.Element {
 
   // Listen for Premiere Pro connection status updates
   useEffect(() => {
-    const handlePremiereStatus = (event: any, data: { connected: boolean }) => {
+    const handlePremiereStatus = (_event: any, data: { connected: boolean }) => {
       setPremiereConnected(data.connected)
     }
 

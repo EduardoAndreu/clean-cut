@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react'
 import { ScrollArea } from './ui/scroll-area'
+import { Button } from './ui/button'
+import { Slider } from './ui/slider'
+import { Checkbox } from './ui/checkbox'
+import { ConnectionPrompt } from './ui/connection-prompt'
 
 interface RemoveSilencesProps {
   premiereConnected: boolean
@@ -81,7 +85,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
 
   // Listen for sequence info updates from Premiere Pro
   useEffect(() => {
-    const handleSequenceInfoUpdate = (event: any, data: string) => {
+    const handleSequenceInfoUpdate = (_event: any, data: string) => {
       try {
         const sequenceData = JSON.parse(data)
         console.log('Received sequence info:', sequenceData)
@@ -98,7 +102,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
       }
     }
 
-    const handleSelectedClipsInfoUpdate = (event: any, data: string) => {
+    const handleSelectedClipsInfoUpdate = (_event: any, data: string) => {
       try {
         const clipsData = JSON.parse(data)
         console.log('Received selected clips info:', clipsData)
@@ -306,7 +310,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
     setResults(null)
 
     try {
-      const result = await window.cleanCutAPI.invokeCleanCut(
+      await window.cleanCutAPI.invokeCleanCut(
         '', // Empty file path for Premiere workflow
         silenceThreshold,
         minSilenceLen,
@@ -358,22 +362,18 @@ Check Premiere Pro for the results.`)
                       ? sequenceInfo.sequenceName || 'Unknown Sequence'
                       : 'No Active Sequence'}
                 </span>
-                <button
-                  className={`px-2 py-1 text-xs font-semibold rounded transition-colors ${
-                    premiereConnected
-                      ? 'text-black bg-white border border-gray-300 hover:bg-gray-100'
-                      : 'text-gray-400 bg-gray-100 border border-gray-200 cursor-not-allowed'
-                  }`}
+                <Button
+                  variant={premiereConnected ? 'outline' : 'secondary'}
+                  size="sm"
                   onClick={handleRefreshSequenceInfo}
                   disabled={!premiereConnected}
+                  className="text-xs"
                 >
                   Refresh
-                </button>
+                </Button>
               </div>
               {!premiereConnected ? (
-                <div className="text-xs text-gray-500">
-                  Connect to Premiere Pro to view sequence information
-                </div>
+                <ConnectionPrompt action="view sequence information" size="sm" />
               ) : sequenceInfo?.success ? (
                 <div className="text-xs text-gray-500">Project: {sequenceInfo.projectName}</div>
               ) : (
@@ -394,52 +394,56 @@ Check Premiere Pro for the results.`)
             {/* Range Selection */}
             <div className="mb-4">
               <div className="flex gap-2 mb-3">
-                <button
-                  className={`flex-1 px-3 py-2 text-xs font-semibold rounded transition-colors ${
+                <Button
+                  variant={
                     !premiereConnected
-                      ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                      ? 'secondary'
                       : selectedRange === 'entire'
-                        ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                        : 'bg-gray-50 text-gray-700 border border-gray-300 hover:bg-gray-100'
-                  }`}
+                        ? 'default'
+                        : 'outline'
+                  }
+                  size="sm"
+                  className={`flex-1 text-xs ${selectedRange === 'entire' && premiereConnected ? 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200' : ''}`}
                   onClick={() => handleRangeSelection('entire')}
                   disabled={!premiereConnected}
                 >
                   Entire timeline
-                </button>
-                <button
-                  className={`flex-1 px-3 py-2 text-xs font-semibold rounded transition-colors ${
+                </Button>
+                <Button
+                  variant={
                     !premiereConnected
-                      ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                      ? 'secondary'
                       : selectedRange === 'inout'
-                        ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                        : 'bg-gray-50 text-gray-700 border border-gray-300 hover:bg-gray-100'
-                  }`}
+                        ? 'default'
+                        : 'outline'
+                  }
+                  size="sm"
+                  className={`flex-1 text-xs ${selectedRange === 'inout' && premiereConnected ? 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200' : ''}`}
                   onClick={() => handleRangeSelection('inout')}
                   disabled={!premiereConnected}
                 >
                   In/Out points
-                </button>
-                <button
-                  className={`flex-1 px-3 py-2 text-xs font-semibold rounded transition-colors ${
+                </Button>
+                <Button
+                  variant={
                     !premiereConnected
-                      ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                      ? 'secondary'
                       : selectedRange === 'selected'
-                        ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                        : 'bg-gray-50 text-gray-700 border border-gray-300 hover:bg-gray-100'
-                  }`}
+                        ? 'default'
+                        : 'outline'
+                  }
+                  size="sm"
+                  className={`flex-1 text-xs ${selectedRange === 'selected' && premiereConnected ? 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200' : ''}`}
                   onClick={() => handleRangeSelection('selected')}
                   disabled={!premiereConnected}
                 >
                   Selected clips
-                </button>
+                </Button>
               </div>
 
               {/* Range status indicator */}
               {!premiereConnected ? (
-                <div className="p-2 bg-gray-50 border border-gray-200 rounded text-[10px] text-gray-500 mb-3">
-                  🔌 Connect to Premiere Pro to configure timeline ranges
-                </div>
+                <ConnectionPrompt action="configure timeline ranges" size="sm" className="mb-6" />
               ) : selectedRange === 'inout' ? (
                 <div className="p-2 bg-gray-50 border border-gray-200 rounded text-[10px] text-gray-600 mb-3">
                   {sequenceInfo?.hasWorkArea && sequenceInfo?.workAreaEnabled
@@ -520,11 +524,9 @@ Check Premiere Pro for the results.`)
 
               {/* Audio Tracks List */}
               <div>
-                <div className="text-xs font-semibold text-black mb-2">Audio Tracks</div>
+                <div className="block text-sm font-semibold text-black mb-4">Audio Tracks</div>
                 {!premiereConnected ? (
-                  <div className="p-4 bg-gray-50 border border-gray-200 rounded text-center text-sm text-gray-500">
-                    Connect to Premiere Pro to view audio tracks
-                  </div>
+                  <ConnectionPrompt action="view audio tracks" size="sm" className="mb-6" />
                 ) : (
                   <div className="flex flex-col gap-1">
                     {Array.from({ length: sequenceInfo?.audioTracks || 0 }, (_, i) => {
@@ -545,15 +547,11 @@ Check Premiere Pro for the results.`)
                             }
                           }}
                         >
-                          <div
-                            className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center text-[10px] flex-shrink-0 ${
-                              isSelected
-                                ? 'bg-orange-500 border-orange-500 text-white'
-                                : 'bg-transparent border-gray-300'
-                            }`}
-                          >
-                            {isSelected && '✓'}
-                          </div>
+                          <Checkbox
+                            checked={isSelected}
+                            onChange={() => {}} // onClick handler on parent handles this
+                            className="flex-shrink-0"
+                          />
                           <span className="text-xs font-semibold text-black min-w-[20px]">
                             A{trackNumber}
                           </span>
@@ -588,16 +586,17 @@ Check Premiere Pro for the results.`)
 
           {/* Silence Threshold Slider */}
           <div className="mb-5">
-            <label className="block text-sm font-semibold text-black mb-2">
+            <div className="block text-sm font-semibold text-black mb-4">Settings</div>
+            <label className="block text-xs font-semibold text-black mb-2">
               Silence Threshold: {silenceThreshold} dB
             </label>
-            <input
-              type="range"
-              min="-60"
-              max="0"
-              value={silenceThreshold}
-              onChange={(e) => setSilenceThreshold(Number(e.target.value))}
-              className="w-full h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer slider"
+            <Slider
+              value={[silenceThreshold]}
+              onValueChange={(value) => setSilenceThreshold(value[0])}
+              min={-60}
+              max={0}
+              step={1}
+              className="w-full"
             />
             <div className="flex justify-between mt-1 text-xs text-gray-500">
               <span>-60 dB</span>
@@ -607,16 +606,16 @@ Check Premiere Pro for the results.`)
 
           {/* Minimum Silence Length Slider */}
           <div className="mb-5">
-            <label className="block text-sm font-semibold text-black mb-2">
+            <label className="block text-xs font-semibold text-black mb-2">
               Minimum Silence Length: {minSilenceLen} ms
             </label>
-            <input
-              type="range"
-              min="100"
-              max="5000"
-              value={minSilenceLen}
-              onChange={(e) => setMinSilenceLen(Number(e.target.value))}
-              className="w-full h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer slider"
+            <Slider
+              value={[minSilenceLen]}
+              onValueChange={(value) => setMinSilenceLen(value[0])}
+              min={100}
+              max={5000}
+              step={1}
+              className="w-full"
             />
             <div className="flex justify-between mt-1 text-xs text-gray-500">
               <span>100 ms</span>
@@ -626,16 +625,16 @@ Check Premiere Pro for the results.`)
 
           {/* Silence Padding Slider */}
           <div className="mb-5">
-            <label className="block text-sm font-semibold text-black mb-2">
+            <label className="block text-xs font-semibold text-black mb-2">
               Silence Padding: {silencePadding} ms
             </label>
-            <input
-              type="range"
-              min="0"
-              max="1000"
-              value={silencePadding}
-              onChange={(e) => setSilencePadding(Number(e.target.value))}
-              className="w-full h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer slider"
+            <Slider
+              value={[silencePadding]}
+              onValueChange={(value) => setSilencePadding(value[0])}
+              min={0}
+              max={1000}
+              step={1}
+              className="w-full"
             />
             <div className="flex justify-between mt-1 text-xs text-gray-500">
               <span>0 ms</span>
@@ -645,17 +644,15 @@ Check Premiere Pro for the results.`)
 
           {/* Process Button */}
           <div className="mb-5">
-            <button
-              className={`w-full px-6 py-3 text-base font-semibold rounded-lg transition-all duration-300 ${
-                isProcessing || !premiereConnected
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-black text-white hover:bg-gray-800 shadow-md hover:shadow-lg'
-              }`}
+            <Button
+              className="w-full px-6 py-3 text-base font-semibold"
+              size="lg"
               onClick={handleProcessFromPremiere}
               disabled={isProcessing || !premiereConnected}
+              variant={isProcessing || !premiereConnected ? 'secondary' : 'default'}
             >
               {isProcessing ? 'Processing...' : 'Process Audio'}
-            </button>
+            </Button>
           </div>
 
           {/* Status Display */}
