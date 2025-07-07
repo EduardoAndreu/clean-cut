@@ -413,14 +413,85 @@ function getSelectedClipsInfo() {
     if (!app.project || !app.project.activeSequence) {
       return JSON.stringify({
         success: false,
-        error: 'No active sequence'
+        error: 'No active sequence',
+        hasSelectedClips: false
       })
     }
 
+    var sequence = app.project.activeSequence
+    var selectedClips = []
+    var selectedClipsFound = 0
+
+    logMessage('Analyzing selected clips across all tracks...')
+
+    // Check video tracks
+    for (var v = 0; v < sequence.videoTracks.numTracks; v++) {
+      var videoTrack = sequence.videoTracks[v]
+      for (var vc = 0; vc < videoTrack.clips.numItems; vc++) {
+        var clip = videoTrack.clips[vc]
+        if (clip && clip.isSelected()) {
+          selectedClipsFound++
+
+          var clipInfo = {
+            trackIndex: v + 1,
+            clipName: clip.name || 'Unknown Video Clip',
+            startTime: parseFloat(clip.start.seconds),
+            endTime: parseFloat(clip.end.seconds),
+            duration: parseFloat(clip.end.seconds) - parseFloat(clip.start.seconds),
+            type: 'video'
+          }
+
+          selectedClips.push(clipInfo)
+          logMessage(
+            'Selected video clip on track ' +
+              (v + 1) +
+              ': ' +
+              clipInfo.startTime +
+              's to ' +
+              clipInfo.endTime +
+              's'
+          )
+        }
+      }
+    }
+
+    // Check audio tracks
+    for (var a = 0; a < sequence.audioTracks.numTracks; a++) {
+      var audioTrack = sequence.audioTracks[a]
+      for (var ac = 0; ac < audioTrack.clips.numItems; ac++) {
+        var clip = audioTrack.clips[ac]
+        if (clip && clip.isSelected()) {
+          selectedClipsFound++
+
+          var clipInfo = {
+            trackIndex: a + 1,
+            clipName: clip.name || 'Unknown Audio Clip',
+            startTime: parseFloat(clip.start.seconds),
+            endTime: parseFloat(clip.end.seconds),
+            duration: parseFloat(clip.end.seconds) - parseFloat(clip.start.seconds),
+            type: 'audio'
+          }
+
+          selectedClips.push(clipInfo)
+          logMessage(
+            'Selected audio clip on track ' +
+              (a + 1) +
+              ': ' +
+              clipInfo.startTime +
+              's to ' +
+              clipInfo.endTime +
+              's'
+          )
+        }
+      }
+    }
+
+    logMessage('Found ' + selectedClipsFound + ' selected clips total')
+
     return JSON.stringify({
       success: true,
-      selectedClips: [],
-      hasSelectedClips: false
+      selectedClips: selectedClips,
+      hasSelectedClips: selectedClipsFound > 0
     })
   } catch (error) {
     return JSON.stringify({

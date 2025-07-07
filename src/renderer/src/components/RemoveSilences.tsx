@@ -51,7 +51,24 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
     outPoint?: number
     hasInOutPoints?: boolean
 
+    // Duration and timecode fields
     durationSeconds?: number
+    durationTime?: string
+    inPointTime?: string
+    outPointTime?: string
+
+    // Selected clips information
+    selectedClips?: Array<{
+      name: string
+      mediaType: string
+      start: number
+      end: number
+      duration: number
+      startTime: string
+      endTime: string
+      trackIndex: number
+    }>
+
     error?: string
   } | null>(null)
   const [selectedAudioTracks, setSelectedAudioTracks] = useState<number[]>([])
@@ -193,6 +210,112 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
   }
 
+  // Helper function to format time in HH:MM:SS:FF format (with frames)
+  const formatTimeWithFrames = (seconds: number): string => {
+    if (!sequenceInfo?.success) {
+      return '00:00:00:00'
+    }
+
+    // Extract frame rate number from the frameRate string
+    let frameRate = 30 // Default frame rate
+    if (sequenceInfo.frameRate) {
+      const frameRateStr = sequenceInfo.frameRate.toString()
+      if (frameRateStr.includes('29.97')) {
+        frameRate = 29.97
+      } else if (frameRateStr.includes('24')) {
+        frameRate = 24
+      } else if (frameRateStr.includes('25')) {
+        frameRate = 25
+      } else if (frameRateStr.includes('30')) {
+        frameRate = 30
+      } else if (frameRateStr.includes('50')) {
+        frameRate = 50
+      } else if (frameRateStr.includes('59.94')) {
+        frameRate = 59.94
+      } else if (frameRateStr.includes('60')) {
+        frameRate = 60
+      } else if (frameRateStr.includes('23.976')) {
+        frameRate = 23.976
+      } else if (frameRateStr.includes('48')) {
+        frameRate = 48
+      }
+    }
+
+    const totalFrames = Math.floor(seconds * frameRate)
+    const hours = Math.floor(totalFrames / (frameRate * 3600))
+    const minutes = Math.floor((totalFrames % (frameRate * 3600)) / (frameRate * 60))
+    const remainingSeconds = Math.floor((totalFrames % (frameRate * 60)) / frameRate)
+    const frames = Math.floor(totalFrames % frameRate)
+
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}:${frames.toString().padStart(2, '0')}`
+  }
+
+  // Helper function to get the timecode info based on selected range
+  const getTimecodeInfo = () => {
+    if (!sequenceInfo?.success) {
+      return {
+        startTimecode: '00:00:00:00',
+        endTimecode: '00:00:00:00'
+      }
+    }
+
+    let startTimecode = '00:00:00:00'
+    let endTimecode = '00:00:00:00'
+
+    switch (selectedRange) {
+      case 'entire':
+        // Start is always 00:00:00:00 for entire timeline
+        startTimecode = '00:00:00:00'
+        // End is the duration - use formatted time if available from Premiere Pro
+        endTimecode =
+          sequenceInfo.durationTime || formatTimeWithFrames(sequenceInfo.durationSeconds || 0)
+        break
+
+      case 'inout':
+        // Priority: Work area > Sequence in/out points > Entire timeline
+        if (sequenceInfo.hasWorkArea && sequenceInfo.workAreaEnabled) {
+          startTimecode = formatTimeWithFrames(sequenceInfo.workAreaInPoint || 0)
+          endTimecode = formatTimeWithFrames(sequenceInfo.workAreaOutPoint || 0)
+        } else if (sequenceInfo.hasSequenceInOutPoints) {
+          startTimecode = formatTimeWithFrames(sequenceInfo.sequenceInPoint || 0)
+          endTimecode = formatTimeWithFrames(sequenceInfo.sequenceOutPoint || 0)
+        } else if (sequenceInfo.inPointTime && sequenceInfo.outPointTime) {
+          // Use the properly formatted timecode from Premiere Pro if available
+          startTimecode = sequenceInfo.inPointTime
+          endTimecode = sequenceInfo.outPointTime
+        } else if (sequenceInfo.hasInOutPoints && sequenceInfo.timebase) {
+          // Backwards compatibility fallback
+          const timebase = sequenceInfo.timebase
+          startTimecode = formatTimeWithFrames((sequenceInfo.inPoint || 0) / timebase)
+          endTimecode = formatTimeWithFrames((sequenceInfo.outPoint || 0) / timebase)
+        } else {
+          // Fallback to entire timeline
+          startTimecode = '00:00:00:00'
+          endTimecode =
+            sequenceInfo.durationTime || formatTimeWithFrames(sequenceInfo.durationSeconds || 0)
+        }
+        break
+
+      case 'selected':
+        if (sequenceInfo?.selectedClips && sequenceInfo.selectedClips.length > 0) {
+          const clips = sequenceInfo.selectedClips
+          const startTimeSeconds = Math.min(...clips.map((clip) => clip.start))
+          const endTimeSeconds = Math.max(...clips.map((clip) => clip.end))
+          startTimecode = formatTimeWithFrames(startTimeSeconds)
+          endTimecode = formatTimeWithFrames(endTimeSeconds)
+        } else {
+          startTimecode = '00:00:00:00'
+          endTimecode = '00:00:00:00'
+        }
+        break
+    }
+
+    return {
+      startTimecode,
+      endTimecode
+    }
+  }
+
   // Helper function to get the duration and range info based on selected range
   const getRangeInfo = () => {
     if (!sequenceInfo?.success) {
@@ -253,14 +376,10 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
         break
 
       case 'selected':
-        if (
-          selectedClipsInfo?.success &&
-          selectedClipsInfo.selectedClips &&
-          selectedClipsInfo.selectedClips.length > 0
-        ) {
-          const clips = selectedClipsInfo.selectedClips
-          startTimeSeconds = Math.min(...clips.map((clip) => clip.startTime))
-          endTimeSeconds = Math.max(...clips.map((clip) => clip.endTime))
+        if (sequenceInfo?.selectedClips && sequenceInfo.selectedClips.length > 0) {
+          const clips = sequenceInfo.selectedClips
+          startTimeSeconds = Math.min(...clips.map((clip) => clip.start))
+          endTimeSeconds = Math.max(...clips.map((clip) => clip.end))
           duration = endTimeSeconds - startTimeSeconds
           console.log('📏 Selected clips duration:', duration, 'seconds', '| clips:', clips.length)
         } else {
@@ -299,12 +418,10 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
 
     // If "Selected clips" is chosen, we should check if clips are actually selected
     if (selectedRange === 'selected') {
-      setStatus('Checking for selected clips...')
-      try {
-        await window.cleanCutAPI.requestSelectedClipsInfo()
-        // We'll get the response via IPC and can validate there
-      } catch (error) {
-        setStatus('Error checking selected clips. Please try again.')
+      if (!sequenceInfo?.selectedClips || sequenceInfo.selectedClips.length === 0) {
+        setStatus(
+          'No clips are selected. Please select audio clips in your timeline first, or choose a different range option.'
+        )
         return
       }
     }
@@ -421,28 +538,40 @@ Check Premiere Pro for the results.`)
               {/* Range status indicator */}
               {!premiereConnected ? (
                 <ConnectionPrompt action="configure timeline ranges" size="sm" className="mb-6" />
-              ) : selectedRange === 'inout' ? (
+              ) : selectedRange === 'inout' &&
+                getTimecodeInfo().startTimecode === '00:00:00:00' &&
+                getTimecodeInfo().endTimecode ===
+                  (sequenceInfo?.durationTime ||
+                    formatTimeWithFrames(sequenceInfo?.durationSeconds || 0)) ? (
                 <div className="p-2 bg-gray-50 border border-gray-200 rounded text-[10px] text-gray-600 mb-3">
-                  {sequenceInfo?.hasWorkArea && sequenceInfo?.workAreaEnabled
-                    ? '📊 Using Work Area range'
-                    : sequenceInfo?.hasSequenceInOutPoints
-                      ? '🎯 Using Sequence In/Out points'
-                      : sequenceInfo?.hasInOutPoints
-                        ? '⏺️ Using Legacy In/Out points'
-                        : '⚠️ No In/Out points set - using entire timeline'}
+                  ⚠️ No In/Out points set - using entire timeline
                 </div>
-              ) : selectedRange === 'selected' ? (
+              ) : selectedRange === 'selected' &&
+                (!sequenceInfo?.selectedClips || sequenceInfo.selectedClips.length === 0) ? (
                 <div className="p-2 bg-gray-50 border border-gray-200 rounded text-[10px] text-gray-600 mb-3">
-                  {selectedClipsInfo?.hasSelectedClips
-                    ? `✅ ${selectedClipsInfo.selectedClips?.length || 0} clips selected`
-                    : '⚠️ No clips selected - select clips in timeline first'}
+                  ⚠️ No clips selected - select clips in timeline first
                 </div>
               ) : null}
+
+              {/* Start and End Points Display */}
+              {premiereConnected && sequenceInfo?.success && (
+                <div className="text-xs text-gray-600 mb-3">
+                  <div>
+                    Start point:{' '}
+                    <span className="font-mono text-xs">{getTimecodeInfo().startTimecode}</span>
+                  </div>
+                  <div>
+                    End point:{' '}
+                    <span className="font-mono text-xs">{getTimecodeInfo().endTimecode}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Audio Tracks */}
             <div className="mb-8">
-              <div className="block text-sm font-semibold text-black mb-4">Audio Tracks</div>
+              <div className="block text-sm font-semibold text-black mb-2">Audio Tracks</div>
+              <div className="text-xs text-gray-500 mb-3">Select which audio tracks to process</div>
               {!premiereConnected ? (
                 <ConnectionPrompt action="view audio tracks" size="sm" className="mb-6" />
               ) : (
