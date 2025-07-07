@@ -1,6 +1,7 @@
 import React from 'react'
 import { Button } from './ui/button'
 import PipelineLabel from './PipelineLabel'
+import SettingsButton from './SettingsButton'
 import { Scissors, ZoomIn, BookOpen, Mic, RotateCcw, Filter } from 'lucide-react'
 
 interface LandingPageProps {
@@ -9,13 +10,15 @@ interface LandingPageProps {
 
 function LandingPage({ onRemoveSilences }: LandingPageProps): React.JSX.Element {
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center p-8">
+    <div className="min-h-screen bg-white flex items-center justify-center p-8 relative">
+      <SettingsButton />
+
       <div className="container mx-auto">
-        <div className="text-center mb-8">
+        <div className="text-center mb-16">
           <h1 className="text-3xl font-bold text-black mb-4 tracking-tight">Clean-Cut</h1>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-6 justify-items-center">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-8 justify-items-center">
           {/* Remove Silences - Enabled */}
           <div className="relative group">
             <Button onClick={onRemoveSilences} variant="enabled" size="square" className="flex-col">

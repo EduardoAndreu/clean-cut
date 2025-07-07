@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import ReturnHomeButton from './ReturnHomeButton'
 
 function RemoveSilences(): React.JSX.Element {
   const [silenceThreshold, setSilenceThreshold] = useState<number>(-30)
@@ -353,592 +354,347 @@ Check Premiere Pro for the results.`)
     }
   }
 
-  const containerStyle: React.CSSProperties = {
-    maxWidth: '500px',
-    margin: '0 auto',
-    padding: '20px',
-    backgroundColor: 'var(--ev-c-black-soft)',
-    borderRadius: '12px',
-    backdropFilter: 'blur(24px)',
-    border: '1px solid var(--ev-c-gray-3)'
-  }
-
-  const titleStyle: React.CSSProperties = {
-    fontSize: '24px',
-    fontWeight: 700,
-    color: 'var(--ev-c-text-1)',
-    textAlign: 'center',
-    marginBottom: '24px'
-  }
-
-  const controlGroupStyle: React.CSSProperties = {
-    marginBottom: '20px'
-  }
-
-  const labelStyle: React.CSSProperties = {
-    display: 'block',
-    fontSize: '14px',
-    fontWeight: 600,
-    color: 'var(--ev-c-text-1)',
-    marginBottom: '8px'
-  }
-
-  const connectionStatusStyle: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    fontSize: '12px',
-    color: premiereConnected ? '#4caf50' : '#f44336',
-    marginBottom: '16px'
-  }
-
-  const statusIndicatorStyle: React.CSSProperties = {
-    width: '8px',
-    height: '8px',
-    borderRadius: '50%',
-    backgroundColor: premiereConnected ? '#4caf50' : '#f44336'
-  }
-
-  const sliderStyle: React.CSSProperties = {
-    width: '100%',
-    height: '6px',
-    borderRadius: '3px',
-    background: 'var(--ev-c-gray-3)',
-    outline: 'none',
-    WebkitAppearance: 'none',
-    appearance: 'none'
-  }
-
-  const sliderRangeStyle: React.CSSProperties = {
-    display: 'flex',
-    justifyContent: 'space-between',
-    marginTop: '4px',
-    fontSize: '12px',
-    color: 'var(--ev-c-text-2)'
-  }
-
-  const buttonStyle: React.CSSProperties = {
-    width: '100%',
-    padding: '12px 24px',
-    fontSize: '16px',
-    fontWeight: 600,
-    color: 'var(--ev-button-alt-text)',
-    backgroundColor:
-      isProcessing || !premiereConnected ? 'var(--ev-c-gray-2)' : 'var(--ev-button-alt-bg)',
-    border: '1px solid var(--ev-button-alt-border)',
-    borderRadius: '8px',
-    cursor: isProcessing || !premiereConnected ? 'not-allowed' : 'pointer',
-    transition: 'all 0.3s ease',
-    opacity: isProcessing || !premiereConnected ? 0.5 : 1
-  }
-
-  const statusStyle: React.CSSProperties = {
-    padding: '12px',
-    backgroundColor: 'var(--ev-c-black-mute)',
-    border: '1px solid var(--ev-c-gray-3)',
-    borderRadius: '6px',
-    fontSize: '14px',
-    color: 'var(--ev-c-text-2)',
-    fontFamily:
-      'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace',
-    minHeight: '60px',
-    lineHeight: 1.5
-  }
-
   return (
-    <div style={containerStyle}>
-      <h2 style={titleStyle}>Remove Silences</h2>
+    <div className="min-h-screen bg-white flex items-center justify-center p-8 relative">
+      <ReturnHomeButton onReturnHome={() => window.location.reload()} />
 
-      {/* Connection Status */}
-      <div style={connectionStatusStyle}>
-        <div style={statusIndicatorStyle}></div>
-        <span>Premiere Pro: {premiereConnected ? 'Connected' : 'Disconnected'}</span>
-      </div>
+      <div className="w-full max-w-lg mx-auto bg-white rounded-xl shadow-lg p-6 border border-gray-200">
+        <h2 className="text-2xl font-bold text-black text-center mb-6">Remove Silences</h2>
 
-      {/* Active Sequence Info - only show when connected */}
-      {premiereConnected && (
-        <div style={controlGroupStyle}>
-          <label style={labelStyle}>Active Sequence</label>
+        {/* Connection Status */}
+        <div className="flex items-center gap-2 text-xs mb-4">
           <div
-            style={{
-              padding: '12px',
-              backgroundColor: 'var(--ev-c-black-mute)',
-              border: '1px solid var(--ev-c-gray-3)',
-              borderRadius: '8px',
-              fontSize: '14px',
-              color: 'var(--ev-c-text-2)'
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '8px'
-              }}
-            >
-              <span style={{ fontWeight: 600, color: 'var(--ev-c-text-1)' }}>
-                {sequenceInfo?.success
-                  ? sequenceInfo.sequenceName || 'Unknown Sequence'
-                  : 'No Active Sequence'}
-              </span>
-              <button
-                style={{
-                  padding: '4px 8px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: 'var(--ev-button-alt-text)',
-                  backgroundColor: 'var(--ev-button-alt-bg)',
-                  border: '1px solid var(--ev-button-alt-border)',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}
-                onClick={handleRefreshSequenceInfo}
-              >
-                Refresh
-              </button>
-            </div>
-            {sequenceInfo?.success ? (
-              <div style={{ fontSize: '12px', color: 'var(--ev-c-text-3)' }}>
-                Project: {sequenceInfo.projectName} | Tracks: {sequenceInfo.videoTracks}V/
-                {sequenceInfo.audioTracks}A
-                {sequenceInfo.frameRate && ` | ${sequenceInfo.frameRate} fps`}
-              </div>
-            ) : (
-              <div style={{ fontSize: '12px', color: 'var(--ev-c-text-3)' }}>
-                {sequenceInfo?.error || 'Click refresh to get sequence information'}
-              </div>
-            )}
-          </div>
+            className={`w-2 h-2 rounded-full ${premiereConnected ? 'bg-green-500' : 'bg-red-500'}`}
+          ></div>
+          <span className={premiereConnected ? 'text-green-600' : 'text-red-600'}>
+            Premiere Pro: {premiereConnected ? 'Connected' : 'Disconnected'}
+          </span>
         </div>
-      )}
 
-      {/* Define Sections */}
-      {premiereConnected && sequenceInfo?.success && (
-        <div style={controlGroupStyle}>
-          <label style={labelStyle}>Define Sections</label>
-          <div style={{ fontSize: '12px', color: 'var(--ev-c-text-3)', marginBottom: '12px' }}>
-            Update the audio sections to be processed by Clean-Cut
+        {/* Active Sequence Info - only show when connected */}
+        {premiereConnected && (
+          <div className="mb-5">
+            <label className="block text-sm font-semibold text-black mb-2">Active Sequence</label>
+            <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
+              <div className="flex justify-between items-center mb-2">
+                <span className="font-semibold text-black">
+                  {sequenceInfo?.success
+                    ? sequenceInfo.sequenceName || 'Unknown Sequence'
+                    : 'No Active Sequence'}
+                </span>
+                <button
+                  className="px-2 py-1 text-xs font-semibold text-black bg-white border border-gray-300 rounded hover:bg-gray-100 transition-colors"
+                  onClick={handleRefreshSequenceInfo}
+                >
+                  Refresh
+                </button>
+              </div>
+              {sequenceInfo?.success ? (
+                <div className="text-xs text-gray-500">
+                  Project: {sequenceInfo.projectName} | Tracks: {sequenceInfo.videoTracks}V/
+                  {sequenceInfo.audioTracks}A
+                  {sequenceInfo.frameRate && ` | ${sequenceInfo.frameRate} fps`}
+                </div>
+              ) : (
+                <div className="text-xs text-gray-500">
+                  {sequenceInfo?.error || 'Click refresh to get sequence information'}
+                </div>
+              )}
+            </div>
           </div>
+        )}
 
-          {/* Range Selection */}
-          <div style={{ marginBottom: '16px' }}>
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-              <button
-                style={{
-                  flex: 1,
-                  padding: '8px 12px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color:
-                    selectedRange === 'entire' ? 'var(--ev-button-alt-text)' : 'var(--ev-c-text-2)',
-                  backgroundColor:
-                    selectedRange === 'entire'
-                      ? 'var(--ev-button-alt-bg)'
-                      : 'var(--ev-c-black-mute)',
-                  border: `1px solid ${selectedRange === 'entire' ? 'var(--ev-button-alt-border)' : 'var(--ev-c-gray-3)'}`,
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}
-                onClick={() => handleRangeSelection('entire')}
-              >
-                Entire timeline
-              </button>
-              <button
-                style={{
-                  flex: 1,
-                  padding: '8px 12px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color:
-                    selectedRange === 'inout' ? 'var(--ev-button-alt-text)' : 'var(--ev-c-text-2)',
-                  backgroundColor:
-                    selectedRange === 'inout'
-                      ? 'var(--ev-button-alt-bg)'
-                      : 'var(--ev-c-black-mute)',
-                  border: `1px solid ${selectedRange === 'inout' ? 'var(--ev-button-alt-border)' : 'var(--ev-c-gray-3)'}`,
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}
-                onClick={() => handleRangeSelection('inout')}
-              >
-                In/Out points
-              </button>
-              <button
-                style={{
-                  flex: 1,
-                  padding: '8px 12px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color:
-                    selectedRange === 'selected'
-                      ? 'var(--ev-button-alt-text)'
-                      : 'var(--ev-c-text-2)',
-                  backgroundColor:
-                    selectedRange === 'selected'
-                      ? 'var(--ev-button-alt-bg)'
-                      : 'var(--ev-c-black-mute)',
-                  border: `1px solid ${selectedRange === 'selected' ? 'var(--ev-button-alt-border)' : 'var(--ev-c-gray-3)'}`,
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}
-                onClick={() => handleRangeSelection('selected')}
-              >
-                Selected clips
-              </button>
+        {/* Define Sections */}
+        {premiereConnected && sequenceInfo?.success && (
+          <div className="mb-5">
+            <label className="block text-sm font-semibold text-black mb-2">Define Sections</label>
+            <div className="text-xs text-gray-500 mb-3">
+              Update the audio sections to be processed by Clean-Cut
             </div>
 
-            {/* Range status indicator */}
-            {selectedRange === 'inout' && (
-              <div
-                style={{
-                  padding: '8px 12px',
-                  backgroundColor: 'var(--ev-c-black-mute)',
-                  border: '1px solid var(--ev-c-gray-3)',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  color: 'var(--ev-c-text-3)',
-                  marginBottom: '12px'
-                }}
-              >
-                {sequenceInfo?.hasWorkArea && sequenceInfo?.workAreaEnabled
-                  ? '📊 Using Work Area range'
-                  : sequenceInfo?.hasSequenceInOutPoints
-                    ? '🎯 Using Sequence In/Out points'
-                    : sequenceInfo?.hasInOutPoints
-                      ? '⏺️ Using Legacy In/Out points'
-                      : '⚠️ No In/Out points set - using entire timeline'}
-              </div>
-            )}
-
-            {selectedRange === 'selected' && (
-              <div
-                style={{
-                  padding: '8px 12px',
-                  backgroundColor: 'var(--ev-c-black-mute)',
-                  border: '1px solid var(--ev-c-gray-3)',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  color: 'var(--ev-c-text-3)',
-                  marginBottom: '12px'
-                }}
-              >
-                {selectedClipsInfo?.hasSelectedClips
-                  ? `✅ ${selectedClipsInfo.selectedClips?.length || 0} clips selected`
-                  : '⚠️ No clips selected - select clips in timeline first'}
-              </div>
-            )}
-          </div>
-
-          {/* Timeline and Audio Tracks */}
-          <div>
-            {/* Timeline Display */}
-            <div style={{ marginBottom: '16px' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  marginBottom: '8px'
-                }}
-              >
-                <div
-                  style={{
-                    width: '20px',
-                    height: '20px',
-                    backgroundColor: 'var(--ev-c-gray-3)',
-                    borderRadius: '2px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
+            {/* Range Selection */}
+            <div className="mb-4">
+              <div className="flex gap-2 mb-3">
+                <button
+                  className={`flex-1 px-3 py-2 text-xs font-semibold rounded transition-colors ${
+                    selectedRange === 'entire'
+                      ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                      : 'bg-gray-50 text-gray-700 border border-gray-300 hover:bg-gray-100'
+                  }`}
+                  onClick={() => handleRangeSelection('entire')}
                 >
-                  <div
-                    style={{
-                      width: '12px',
-                      height: '2px',
-                      backgroundColor: 'var(--ev-c-text-2)'
-                    }}
-                  ></div>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      height: '4px',
-                      backgroundColor: 'var(--ev-c-gray-3)',
-                      borderRadius: '2px',
-                      position: 'relative'
-                    }}
-                  >
-                    {/* Timeline bar with gradient to show active range */}
-                    {(() => {
-                      const rangeInfo = getRangeInfo()
-                      const totalDuration = sequenceInfo?.durationSeconds || 1
-                      const startPercent =
-                        selectedRange === 'entire'
-                          ? 0
-                          : (rangeInfo.startTimeSeconds / totalDuration) * 100
-                      const endPercent =
-                        selectedRange === 'entire'
-                          ? 100
-                          : (rangeInfo.endTimeSeconds / totalDuration) * 100
+                  Entire timeline
+                </button>
+                <button
+                  className={`flex-1 px-3 py-2 text-xs font-semibold rounded transition-colors ${
+                    selectedRange === 'inout'
+                      ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                      : 'bg-gray-50 text-gray-700 border border-gray-300 hover:bg-gray-100'
+                  }`}
+                  onClick={() => handleRangeSelection('inout')}
+                >
+                  In/Out points
+                </button>
+                <button
+                  className={`flex-1 px-3 py-2 text-xs font-semibold rounded transition-colors ${
+                    selectedRange === 'selected'
+                      ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                      : 'bg-gray-50 text-gray-700 border border-gray-300 hover:bg-gray-100'
+                  }`}
+                  onClick={() => handleRangeSelection('selected')}
+                >
+                  Selected clips
+                </button>
+              </div>
 
-                      return (
-                        <div
-                          style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: `${Math.max(0, Math.min(startPercent, 100))}%`,
-                            right: `${Math.max(0, 100 - Math.min(endPercent, 100))}%`,
-                            bottom: 0,
-                            background:
+              {/* Range status indicator */}
+              {selectedRange === 'inout' && (
+                <div className="p-2 bg-gray-50 border border-gray-200 rounded text-[10px] text-gray-600 mb-3">
+                  {sequenceInfo?.hasWorkArea && sequenceInfo?.workAreaEnabled
+                    ? '📊 Using Work Area range'
+                    : sequenceInfo?.hasSequenceInOutPoints
+                      ? '🎯 Using Sequence In/Out points'
+                      : sequenceInfo?.hasInOutPoints
+                        ? '⏺️ Using Legacy In/Out points'
+                        : '⚠️ No In/Out points set - using entire timeline'}
+                </div>
+              )}
+
+              {selectedRange === 'selected' && (
+                <div className="p-2 bg-gray-50 border border-gray-200 rounded text-[10px] text-gray-600 mb-3">
+                  {selectedClipsInfo?.hasSelectedClips
+                    ? `✅ ${selectedClipsInfo.selectedClips?.length || 0} clips selected`
+                    : '⚠️ No clips selected - select clips in timeline first'}
+                </div>
+              )}
+            </div>
+
+            {/* Timeline and Audio Tracks */}
+            <div>
+              {/* Timeline Display */}
+              <div className="mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-5 h-5 bg-gray-300 rounded-sm flex items-center justify-center">
+                    <div className="w-3 h-0.5 bg-gray-600"></div>
+                  </div>
+                  <div className="flex-1">
+                    <div className="h-1 bg-gray-300 rounded-sm relative">
+                      {/* Timeline bar with gradient to show active range */}
+                      {(() => {
+                        const rangeInfo = getRangeInfo()
+                        const totalDuration = sequenceInfo?.durationSeconds || 1
+                        const startPercent =
+                          selectedRange === 'entire'
+                            ? 0
+                            : (rangeInfo.startTimeSeconds / totalDuration) * 100
+                        const endPercent =
+                          selectedRange === 'entire'
+                            ? 100
+                            : (rangeInfo.endTimeSeconds / totalDuration) * 100
+
+                        return (
+                          <div
+                            className={`absolute top-0 bottom-0 rounded-sm transition-all duration-300 ${
                               selectedRange === 'entire'
-                                ? 'linear-gradient(90deg, #4a90e2 0%, #7bb3f0 100%)'
+                                ? 'bg-gradient-to-r from-blue-500 to-blue-400'
                                 : selectedRange === 'inout'
                                   ? sequenceInfo?.hasWorkArea
-                                    ? 'linear-gradient(90deg, #9c27b0 0%, #e1bee7 100%)' // Purple for work area
-                                    : 'linear-gradient(90deg, #ff9800 0%, #ffcc80 100%)' // Orange for in/out
-                                  : 'linear-gradient(90deg, #4caf50 0%, #a5d6a7 100%)', // Green for selected
-                            borderRadius: '2px',
-                            transition: 'all 0.3s ease'
-                          }}
-                        ></div>
-                      )
-                    })()}
+                                    ? 'bg-gradient-to-r from-purple-500 to-purple-400'
+                                    : 'bg-gradient-to-r from-orange-500 to-orange-400'
+                                  : 'bg-gradient-to-r from-green-500 to-green-400'
+                            }`}
+                            style={{
+                              left: `${Math.max(0, Math.min(startPercent, 100))}%`,
+                              right: `${Math.max(0, 100 - Math.min(endPercent, 100))}%`
+                            }}
+                          ></div>
+                        )
+                      })()}
+                    </div>
                   </div>
                 </div>
+                {/* Time indicators */}
+                <div className="flex justify-between text-[10px] text-gray-500 ml-7">
+                  <span>{getRangeInfo().startTime}</span>
+                  <span className="text-[9px] text-gray-600">
+                    Duration: {formatTime(getRangeInfo().duration)}
+                  </span>
+                  <span>{getRangeInfo().endTime}</span>
+                </div>
               </div>
-              {/* Time indicators */}
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  fontSize: '10px',
-                  color: 'var(--ev-c-text-3)',
-                  marginLeft: '28px'
-                }}
-              >
-                <span>{getRangeInfo().startTime}</span>
-                <span style={{ fontSize: '9px', color: 'var(--ev-c-text-2)' }}>
-                  Duration: {formatTime(getRangeInfo().duration)}
-                </span>
-                <span>{getRangeInfo().endTime}</span>
-              </div>
-            </div>
 
-            {/* Audio Tracks List */}
-            <div>
-              <div
-                style={{
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  color: 'var(--ev-c-text-1)',
-                  marginBottom: '8px'
-                }}
-              >
-                Audio Tracks
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {Array.from({ length: sequenceInfo.audioTracks || 0 }, (_, i) => {
-                  const trackNumber = i + 1
-                  const isSelected = selectedAudioTracks.includes(trackNumber)
+              {/* Audio Tracks List */}
+              <div>
+                <div className="text-xs font-semibold text-black mb-2">Audio Tracks</div>
+                <div className="flex flex-col gap-1">
+                  {Array.from({ length: sequenceInfo.audioTracks || 0 }, (_, i) => {
+                    const trackNumber = i + 1
+                    const isSelected = selectedAudioTracks.includes(trackNumber)
 
-                  return (
-                    <div
-                      key={trackNumber}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
-                        padding: '8px 12px',
-                        backgroundColor: 'var(--ev-c-black-mute)',
-                        border: '1px solid var(--ev-c-gray-3)',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        transition: 'all 0.3s ease'
-                      }}
-                      onClick={() => {
-                        if (isSelected) {
-                          setSelectedAudioTracks((prev) => prev.filter((t) => t !== trackNumber))
-                        } else {
-                          setSelectedAudioTracks((prev) => [...prev, trackNumber])
-                        }
-                      }}
-                    >
+                    return (
                       <div
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          backgroundColor: isSelected ? '#ff6b35' : 'transparent',
-                          border: '2px solid var(--ev-c-gray-3)',
-                          borderRadius: '3px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '10px',
-                          color: 'white',
-                          flexShrink: 0
+                        key={trackNumber}
+                        className="flex items-center gap-3 p-2 bg-gray-50 border border-gray-200 rounded cursor-pointer hover:bg-gray-100 transition-colors"
+                        onClick={() => {
+                          if (isSelected) {
+                            setSelectedAudioTracks((prev) => prev.filter((t) => t !== trackNumber))
+                          } else {
+                            setSelectedAudioTracks((prev) => [...prev, trackNumber])
+                          }
                         }}
                       >
-                        {isSelected && '✓'}
+                        <div
+                          className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center text-[10px] flex-shrink-0 ${
+                            isSelected
+                              ? 'bg-orange-500 border-orange-500 text-white'
+                              : 'bg-transparent border-gray-300'
+                          }`}
+                        >
+                          {isSelected && '✓'}
+                        </div>
+                        <span className="text-xs font-semibold text-black min-w-[20px]">
+                          A{trackNumber}
+                        </span>
+                        {/* Static waveform graphic */}
+                        <div className="flex-1 h-6 flex items-end gap-px px-2">
+                          {/* Generate static waveform bars */}
+                          {Array.from({ length: 40 }, (_, barIndex) => {
+                            const heights = [
+                              4, 8, 12, 16, 20, 14, 10, 6, 8, 18, 22, 16, 12, 8, 4, 6, 10, 14, 18,
+                              12, 8, 6, 10, 16, 20, 14, 8, 4, 6, 12, 18, 16, 10, 8, 6, 4, 8, 12, 16,
+                              10
+                            ]
+                            return (
+                              <div
+                                key={barIndex}
+                                className={`w-0.5 rounded-sm transition-colors duration-300 ${
+                                  isSelected ? 'bg-blue-500' : 'bg-gray-300'
+                                }`}
+                                style={{ height: `${heights[barIndex]}px` }}
+                              />
+                            )
+                          })}
+                        </div>
                       </div>
-                      <span
-                        style={{
-                          fontSize: '13px',
-                          fontWeight: 600,
-                          color: 'var(--ev-c-text-1)',
-                          minWidth: '20px'
-                        }}
-                      >
-                        A{trackNumber}
-                      </span>
-                      {/* Static waveform graphic */}
-                      <div
-                        style={{
-                          flex: 1,
-                          height: '24px',
-                          display: 'flex',
-                          alignItems: 'end',
-                          gap: '1px',
-                          padding: '0 8px'
-                        }}
-                      >
-                        {/* Generate static waveform bars */}
-                        {Array.from({ length: 40 }, (_, barIndex) => {
-                          const heights = [
-                            4, 8, 12, 16, 20, 14, 10, 6, 8, 18, 22, 16, 12, 8, 4, 6, 10, 14, 18, 12,
-                            8, 6, 10, 16, 20, 14, 8, 4, 6, 12, 18, 16, 10, 8, 6, 4, 8, 12, 16, 10
-                          ]
-                          return (
-                            <div
-                              key={barIndex}
-                              style={{
-                                width: '2px',
-                                height: `${heights[barIndex]}px`,
-                                backgroundColor: isSelected ? '#4a90e2' : 'var(--ev-c-gray-3)',
-                                borderRadius: '1px',
-                                opacity: isSelected ? 1 : 0.6,
-                                transition: 'all 0.3s ease'
-                              }}
-                            />
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
               </div>
             </div>
           </div>
+        )}
+
+        {/* Silence Threshold Slider */}
+        <div className="mb-5">
+          <label className="block text-sm font-semibold text-black mb-2">
+            Silence Threshold: {silenceThreshold} dB
+          </label>
+          <input
+            type="range"
+            min="-60"
+            max="0"
+            value={silenceThreshold}
+            onChange={(e) => setSilenceThreshold(Number(e.target.value))}
+            className="w-full h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer slider"
+          />
+          <div className="flex justify-between mt-1 text-xs text-gray-500">
+            <span>-60 dB</span>
+            <span>0 dB</span>
+          </div>
         </div>
-      )}
 
-      {/* Silence Threshold Slider */}
-      <div style={controlGroupStyle}>
-        <label style={labelStyle}>Silence Threshold: {silenceThreshold} dB</label>
-        <input
-          type="range"
-          min="-60"
-          max="0"
-          value={silenceThreshold}
-          onChange={(e) => setSilenceThreshold(Number(e.target.value))}
-          style={sliderStyle}
-        />
-        <div style={sliderRangeStyle}>
-          <span>-60 dB</span>
-          <span>0 dB</span>
+        {/* Minimum Silence Length Slider */}
+        <div className="mb-5">
+          <label className="block text-sm font-semibold text-black mb-2">
+            Minimum Silence Length: {minSilenceLen} ms
+          </label>
+          <input
+            type="range"
+            min="100"
+            max="5000"
+            value={minSilenceLen}
+            onChange={(e) => setMinSilenceLen(Number(e.target.value))}
+            className="w-full h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer slider"
+          />
+          <div className="flex justify-between mt-1 text-xs text-gray-500">
+            <span>100 ms</span>
+            <span>5000 ms</span>
+          </div>
         </div>
-      </div>
 
-      {/* Minimum Silence Length Slider */}
-      <div style={controlGroupStyle}>
-        <label style={labelStyle}>Minimum Silence Length: {minSilenceLen} ms</label>
-        <input
-          type="range"
-          min="100"
-          max="5000"
-          value={minSilenceLen}
-          onChange={(e) => setMinSilenceLen(Number(e.target.value))}
-          style={sliderStyle}
-        />
-        <div style={sliderRangeStyle}>
-          <span>100 ms</span>
-          <span>5000 ms</span>
+        {/* Silence Padding Slider */}
+        <div className="mb-5">
+          <label className="block text-sm font-semibold text-black mb-2">
+            Silence Padding: {silencePadding} ms
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="1000"
+            value={silencePadding}
+            onChange={(e) => setSilencePadding(Number(e.target.value))}
+            className="w-full h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer slider"
+          />
+          <div className="flex justify-between mt-1 text-xs text-gray-500">
+            <span>0 ms</span>
+            <span>1000 ms</span>
+          </div>
         </div>
-      </div>
 
-      {/* Silence Padding Slider */}
-      <div style={controlGroupStyle}>
-        <label style={labelStyle}>Silence Padding: {silencePadding} ms</label>
-        <input
-          type="range"
-          min="0"
-          max="1000"
-          value={silencePadding}
-          onChange={(e) => setSilencePadding(Number(e.target.value))}
-          style={sliderStyle}
-        />
-        <div style={sliderRangeStyle}>
-          <span>0 ms</span>
-          <span>1000 ms</span>
+        {/* Process Button */}
+        <div className="mb-5">
+          <button
+            className={`w-full px-6 py-3 text-base font-semibold rounded-lg transition-all duration-300 ${
+              isProcessing || !premiereConnected
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-black text-white hover:bg-gray-800 shadow-md hover:shadow-lg'
+            }`}
+            onClick={handleProcessFromPremiere}
+            disabled={isProcessing || !premiereConnected}
+          >
+            {isProcessing ? 'Processing...' : 'Process Audio'}
+          </button>
         </div>
-      </div>
 
-      {/* Process Button */}
-      <div style={controlGroupStyle}>
-        <button
-          style={buttonStyle}
-          onClick={handleProcessFromPremiere}
-          disabled={isProcessing || !premiereConnected}
-        >
-          {isProcessing ? 'Processing...' : 'Process Audio'}
-        </button>
-      </div>
-
-      {/* Status Display */}
-      <div style={controlGroupStyle}>
-        <label style={labelStyle}>Status</label>
-        <div style={statusStyle}>
-          {status}
-          {results && results.length > 0 && (
-            <div style={{ marginTop: '8px' }}>
-              <strong>Silence Ranges ({results.length} total):</strong>
-              {results.length <= 10 ? (
-                // Show all ranges if 10 or fewer
-                results.map((range, index) => (
-                  <div key={index} style={{ marginLeft: '8px' }}>
-                    {index + 1}. {range[0].toFixed(2)}s - {range[1].toFixed(2)}s (
-                    {(range[1] - range[0]).toFixed(2)}s)
-                  </div>
-                ))
-              ) : (
-                // Show first 5 and last 5 if more than 10
-                <>
-                  {results.slice(0, 5).map((range, index) => (
-                    <div key={index} style={{ marginLeft: '8px' }}>
+        {/* Status Display */}
+        <div className="mb-0">
+          <label className="block text-sm font-semibold text-black mb-2">Status</label>
+          <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 font-mono min-h-[60px] leading-relaxed">
+            {status}
+            {results && results.length > 0 && (
+              <div className="mt-2">
+                <strong>Silence Ranges ({results.length} total):</strong>
+                {results.length <= 10 ? (
+                  // Show all ranges if 10 or fewer
+                  results.map((range, index) => (
+                    <div key={index} className="ml-2">
                       {index + 1}. {range[0].toFixed(2)}s - {range[1].toFixed(2)}s (
                       {(range[1] - range[0]).toFixed(2)}s)
                     </div>
-                  ))}
-                  <div
-                    style={{ marginLeft: '8px', fontStyle: 'italic', color: 'var(--ev-c-text-3)' }}
-                  >
-                    ... {results.length - 10} more ranges ...
-                  </div>
-                  {results.slice(-5).map((range, index) => (
-                    <div key={results.length - 5 + index} style={{ marginLeft: '8px' }}>
-                      {results.length - 5 + index + 1}. {range[0].toFixed(2)}s -{' '}
-                      {range[1].toFixed(2)}s ({(range[1] - range[0]).toFixed(2)}s)
+                  ))
+                ) : (
+                  // Show first 5 and last 5 if more than 10
+                  <>
+                    {results.slice(0, 5).map((range, index) => (
+                      <div key={index} className="ml-2">
+                        {index + 1}. {range[0].toFixed(2)}s - {range[1].toFixed(2)}s (
+                        {(range[1] - range[0]).toFixed(2)}s)
+                      </div>
+                    ))}
+                    <div className="ml-2 italic text-gray-500">
+                      ... {results.length - 10} more ranges ...
                     </div>
-                  ))}
-                </>
-              )}
-            </div>
-          )}
+                    {results.slice(-5).map((range, index) => (
+                      <div key={results.length - 5 + index} className="ml-2">
+                        {results.length - 5 + index + 1}. {range[0].toFixed(2)}s -{' '}
+                        {range[1].toFixed(2)}s ({(range[1] - range[0]).toFixed(2)}s)
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

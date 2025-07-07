@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import LandingPage from './components/LandingPage'
 import RemoveSilences from './components/RemoveSilences'
+import ReturnHomeButton from './components/ReturnHomeButton'
 
 function App(): React.JSX.Element {
   const [currentPage, setCurrentPage] = useState<'landing' | 'remove-silences'>('landing')
@@ -19,12 +20,7 @@ function App(): React.JSX.Element {
         <LandingPage onRemoveSilences={handleRemoveSilences} />
       ) : (
         <div className="relative">
-          <button
-            onClick={handleBackToLanding}
-            className="absolute top-4 left-4 text-gray-600 hover:text-gray-900 font-medium"
-          >
-            ← Back to Home
-          </button>
+          <ReturnHomeButton onReturnHome={handleBackToLanding} />
           <RemoveSilences />
         </div>
       )}
