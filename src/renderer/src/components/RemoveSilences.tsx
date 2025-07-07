@@ -14,12 +14,11 @@ interface RemoveSilencesProps {
 
 function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.Element {
   const [silenceThreshold, setSilenceThreshold] = useState<number>(-30)
-  const [minSilenceLen, setMinSilenceLen] = useState<number>(1000)
-  const [silencePadding, setSilencePadding] = useState<number>(100)
+  const [minSilenceLen, setMinSilenceLen] = useState<number>(200)
+  const [padding, setPadding] = useState<number>(200)
   const [silenceManagement, setSilenceManagement] = useState<string>('remove')
   const [status, setStatus] = useState<string>('Waiting for Premiere Pro connection...')
   const [isProcessing, setIsProcessing] = useState<boolean>(false)
-  const [results, setResults] = useState<number[][] | null>(null)
   const [sequenceInfo, setSequenceInfo] = useState<{
     success: boolean
     sequenceName?: string
@@ -73,24 +72,12 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
   } | null>(null)
   const [selectedAudioTracks, setSelectedAudioTracks] = useState<number[]>([])
   const [selectedRange, setSelectedRange] = useState<'entire' | 'inout' | 'selected'>('entire')
-  const [selectedClipsInfo, setSelectedClipsInfo] = useState<{
-    success: boolean
-    selectedClips?: Array<{
-      trackIndex: number
-      clipName: string
-      startTime: number
-      endTime: number
-      duration: number
-      type: string
-    }>
-    hasSelectedClips?: boolean
-  } | null>(null)
 
   // Effect hook for cleanup and side effects
   useEffect(() => {
-    // Reset results when parameters change
-    setResults(null)
-  }, [silenceThreshold, minSilenceLen, silencePadding])
+    // Reset processing state when parameters change
+    // Results are handled directly in Premiere Pro
+  }, [silenceThreshold, minSilenceLen, padding])
 
   // Update status when connection changes
   useEffect(() => {
@@ -123,44 +110,18 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
       }
     }
 
-    const handleSelectedClipsInfoUpdate = (_event: any, data: string) => {
-      try {
-        const clipsData = JSON.parse(data)
-        console.log('Received selected clips info:', clipsData)
-        setSelectedClipsInfo(clipsData)
-
-        if (selectedRange === 'selected') {
-          if (!clipsData.success || !clipsData.hasSelectedClips) {
-            setStatus(
-              'No clips are selected. Please select audio clips in your timeline first, or choose a different range option.'
-            )
-            setIsProcessing(false)
-          }
-        }
-      } catch (error) {
-        console.error('Error parsing selected clips info:', error)
-        setSelectedClipsInfo({ success: false, hasSelectedClips: false })
-        if (selectedRange === 'selected') {
-          setStatus('Error checking selected clips. Please try again.')
-          setIsProcessing(false)
-        }
-      }
-    }
-
     // Add IPC listeners
     if (window.electron && window.electron.ipcRenderer) {
       window.electron.ipcRenderer.on('sequence-info-update', handleSequenceInfoUpdate)
-      window.electron.ipcRenderer.on('selected-clips-info-update', handleSelectedClipsInfoUpdate)
     }
 
     return () => {
       // Cleanup listeners on unmount
       if (window.electron && window.electron.ipcRenderer) {
         window.electron.ipcRenderer.removeAllListeners('sequence-info-update')
-        window.electron.ipcRenderer.removeAllListeners('selected-clips-info-update')
       }
     }
-  }, [selectedRange])
+  }, [])
 
   // Handle range selection changes and request fresh data
   const handleRangeSelection = async (range: 'entire' | 'inout' | 'selected') => {
@@ -171,17 +132,8 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
     }
 
     try {
-      // Always refresh sequence info for in/out points data
-      if (range === 'inout' || range === 'entire') {
-        await window.cleanCutAPI.requestSequenceInfo()
-      }
-
-      // Request selected clips info when switching to selected clips
-      if (range === 'selected') {
-        await window.cleanCutAPI.requestSelectedClipsInfo()
-        // Also refresh sequence info to get updated timeline data
-        await window.cleanCutAPI.requestSequenceInfo()
-      }
+      // Refresh sequence info for all ranges (includes selected clips data)
+      await window.cleanCutAPI.requestSequenceInfo()
     } catch (error) {
       console.error('Error requesting updated range data:', error)
     }
@@ -200,14 +152,6 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
       setStatus(`Error requesting sequence info: ${error}`)
       console.error('Error requesting sequence info:', error)
     }
-  }
-
-  // Helper function to format time in HH:MM:SS format
-  const formatTime = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600)
-    const minutes = Math.floor((seconds % 3600) / 60)
-    const remainingSeconds = Math.floor(seconds % 60)
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
   }
 
   // Helper function to format time in HH:MM:SS:FF format (with frames)
@@ -316,92 +260,6 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
     }
   }
 
-  // Helper function to get the duration and range info based on selected range
-  const getRangeInfo = () => {
-    if (!sequenceInfo?.success) {
-      return {
-        duration: 0,
-        startTime: '00:00:00',
-        endTime: '00:00:00',
-        startTimeSeconds: 0,
-        endTimeSeconds: 0
-      }
-    }
-
-    let duration = 0
-    let startTimeSeconds = 0
-    let endTimeSeconds = 0
-
-    switch (selectedRange) {
-      case 'entire':
-        // Timeline span from 0:00:00 to end of last clip (includes gaps)
-        duration = sequenceInfo.durationSeconds || 0
-        startTimeSeconds = 0
-        endTimeSeconds = duration
-        console.log('📏 Entire timeline duration (0 to last clip):', duration, 'seconds')
-        break
-
-      case 'inout':
-        // Priority: Work area > Sequence in/out points > Entire timeline
-        if (sequenceInfo.hasWorkArea && sequenceInfo.workAreaEnabled) {
-          // Work area points are already in seconds
-          startTimeSeconds = sequenceInfo.workAreaInPoint || 0
-          endTimeSeconds = sequenceInfo.workAreaOutPoint || 0
-          duration = endTimeSeconds - startTimeSeconds
-          console.log('📏 Work area duration:', duration, 'seconds (work area enabled)')
-        } else if (sequenceInfo.hasSequenceInOutPoints) {
-          // Sequence in/out points are already in seconds
-          startTimeSeconds = sequenceInfo.sequenceInPoint || 0
-          endTimeSeconds = sequenceInfo.sequenceOutPoint || 0
-          duration = endTimeSeconds - startTimeSeconds
-          console.log('📏 Sequence in/out points duration:', duration, 'seconds')
-        } else if (sequenceInfo.hasInOutPoints && sequenceInfo.timebase) {
-          // Backwards compatibility fallback (these might be in ticks)
-          const timebase = sequenceInfo.timebase
-          startTimeSeconds = (sequenceInfo.inPoint || 0) / timebase
-          endTimeSeconds = (sequenceInfo.outPoint || 0) / timebase
-          duration = endTimeSeconds - startTimeSeconds
-          console.log('📏 Legacy in/out points duration:', duration, 'seconds')
-        } else {
-          // Fallback to entire timeline if no in/out points or work area
-          duration = sequenceInfo.durationSeconds || 0
-          startTimeSeconds = 0
-          endTimeSeconds = duration
-          console.log(
-            '📏 No in/out points or work area, using entire timeline:',
-            duration,
-            'seconds'
-          )
-        }
-        break
-
-      case 'selected':
-        if (sequenceInfo?.selectedClips && sequenceInfo.selectedClips.length > 0) {
-          const clips = sequenceInfo.selectedClips
-          startTimeSeconds = Math.min(...clips.map((clip) => clip.start))
-          endTimeSeconds = Math.max(...clips.map((clip) => clip.end))
-          duration = endTimeSeconds - startTimeSeconds
-          console.log('📏 Selected clips duration:', duration, 'seconds', '| clips:', clips.length)
-        } else {
-          duration = 0
-          startTimeSeconds = 0
-          endTimeSeconds = 0
-          console.log('📏 No selected clips found')
-        }
-        break
-    }
-
-    const result = {
-      duration,
-      startTime: formatTime(startTimeSeconds),
-      endTime: formatTime(endTimeSeconds),
-      startTimeSeconds,
-      endTimeSeconds
-    }
-
-    return result
-  }
-
   const handleProcessFromPremiere = async () => {
     if (!premiereConnected) {
       setStatus(
@@ -428,14 +286,13 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
 
     setIsProcessing(true)
     setStatus('Requesting audio from Premiere Pro...')
-    setResults(null)
 
     try {
       await window.cleanCutAPI.invokeCleanCut(
         '', // Empty file path for Premiere workflow
         silenceThreshold,
         minSilenceLen,
-        silencePadding,
+        padding,
         {
           selectedAudioTracks,
           selectedRange
@@ -456,7 +313,7 @@ Parameters used:
 - Audio tracks: ${tracksText}
 - Threshold: ${silenceThreshold}dB
 - Min silence: ${minSilenceLen}ms  
-- Padding: ${silencePadding}ms
+- Padding: ${padding}ms
 
 Check Premiere Pro for the results.`)
     } catch (error) {
@@ -676,45 +533,55 @@ Check Premiere Pro for the results.`)
               <Slider
                 value={[minSilenceLen]}
                 onValueChange={(value) => setMinSilenceLen(value[0])}
-                min={100}
-                max={5000}
+                min={50}
+                max={500}
                 step={1}
                 className="w-full"
               />
+              <div className="flex justify-between mt-2 text-xs text-gray-500">
+                <span>Calm</span>
+                <span>Measured</span>
+                <span>Paced</span>
+                <span>Energetic</span>
+                <span>Jumpy</span>
+              </div>
               <div className="flex justify-between mt-1 text-xs text-gray-500">
-                <span>100 ms</span>
-                <span>5000 ms</span>
+                <span>50 ms</span>
+                <span>500 ms</span>
               </div>
             </div>
 
-            {/* Silence Padding Slider */}
-            <div className="mb-0">
+            {/* Padding Slider */}
+            <div className="mb-4">
               <label className="block text-xs font-semibold text-black mb-2">
-                Silence Padding: {silencePadding} ms
+                Padding: {padding} ms
               </label>
               <Slider
-                value={[silencePadding]}
-                onValueChange={(value) => setSilencePadding(value[0])}
-                min={0}
-                max={1000}
+                value={[padding]}
+                onValueChange={(value) => setPadding(value[0])}
+                min={50}
+                max={500}
                 step={1}
                 className="w-full"
               />
+              <div className="flex justify-between mt-2 text-xs text-gray-500">
+                <span>Calm</span>
+                <span>Measured</span>
+                <span>Paced</span>
+                <span>Energetic</span>
+                <span>Jumpy</span>
+              </div>
               <div className="flex justify-between mt-1 text-xs text-gray-500">
-                <span>0 ms</span>
-                <span>1000 ms</span>
+                <span>50 ms</span>
+                <span>500 ms</span>
               </div>
             </div>
           </div>
 
           {/* Silence Management */}
-          <div className="mb-5">
+          <div className="mb-8">
             <div className="block text-sm font-semibold text-black mb-4">Silence Management</div>
-            <RadioGroup
-              value={silenceManagement}
-              onValueChange={setSilenceManagement}
-              className="space-y-2"
-            >
+            <RadioGroup value={silenceManagement} onValueChange={setSilenceManagement}>
               <div className="flex items-center gap-3">
                 <RadioGroupItem value="remove" id="remove" />
                 <Label htmlFor="remove" className="text-xs text-black">

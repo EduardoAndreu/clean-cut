@@ -26,7 +26,7 @@ function ActiveSequence({
   return (
     <div className={`mb-8 ${className}`}>
       <label className="block text-sm font-semibold mb-2">Active Sequence</label>
-      <div className="text-xs text-gray-500 mb-4">Refresh if you select open a new sequence</div>
+      <div className="text-xs text-gray-500 mb-3">Refresh if you select open a new sequence</div>
       <div className="p-2 bg-gray-50 border rounded-lg">
         <div className="flex justify-between text-xs mb-1">
           <span className="font-semibold text-black">
