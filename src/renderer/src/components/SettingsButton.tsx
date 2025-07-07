@@ -6,7 +6,7 @@ function SettingsButton(): React.JSX.Element {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   return (
-    <div className="absolute top-4 right-4">
+    <div className="relative">
       <Button
         onClick={() => setIsMenuOpen(!isMenuOpen)}
         variant="ghost"

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import ReturnHomeButton from './ReturnHomeButton'
+import PremierConnectionStatus from './PremierConnectionStatus'
 
 function RemoveSilences(): React.JSX.Element {
   const [silenceThreshold, setSilenceThreshold] = useState<number>(-30)
@@ -362,14 +363,7 @@ Check Premiere Pro for the results.`)
         <h2 className="text-2xl font-bold text-black text-center mb-6">Remove Silences</h2>
 
         {/* Connection Status */}
-        <div className="flex items-center gap-2 text-xs mb-4">
-          <div
-            className={`w-2 h-2 rounded-full ${premiereConnected ? 'bg-green-500' : 'bg-red-500'}`}
-          ></div>
-          <span className={premiereConnected ? 'text-green-600' : 'text-red-600'}>
-            Premiere Pro: {premiereConnected ? 'Connected' : 'Disconnected'}
-          </span>
-        </div>
+        <PremierConnectionStatus isConnected={premiereConnected} className="mb-4" />
 
         {/* Active Sequence Info - only show when connected */}
         {premiereConnected && (
