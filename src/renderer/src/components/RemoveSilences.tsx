@@ -4,6 +4,9 @@ import { Button } from './ui/button'
 import { Slider } from './ui/slider'
 import { Checkbox } from './ui/checkbox'
 import { ConnectionPrompt } from './ui/connection-prompt'
+import { RadioGroup, RadioGroupItem } from './ui/radio-group'
+import { Label } from './ui/label'
+import ActiveSequence from './ActiveSequence'
 
 interface RemoveSilencesProps {
   premiereConnected: boolean
@@ -13,6 +16,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
   const [silenceThreshold, setSilenceThreshold] = useState<number>(-30)
   const [minSilenceLen, setMinSilenceLen] = useState<number>(1000)
   const [silencePadding, setSilencePadding] = useState<number>(100)
+  const [silenceManagement, setSilenceManagement] = useState<string>('remove')
   const [status, setStatus] = useState<string>('Waiting for Premiere Pro connection...')
   const [isProcessing, setIsProcessing] = useState<boolean>(false)
   const [results, setResults] = useState<number[][] | null>(null)
@@ -350,39 +354,12 @@ Check Premiere Pro for the results.`)
     <div className="w-full bg-white">
       <ScrollArea className="h-[calc(100vh-12rem)] w-full">
         <div className="p-6">
-          {/* Active Sequence Info - always show, with different states based on connection */}
-          <div className="mb-5">
-            <label className="block text-sm font-semibold text-black mb-2">Active Sequence</label>
-            <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
-              <div className="flex justify-between items-center mb-2">
-                <span className="font-semibold text-black">
-                  {!premiereConnected
-                    ? 'Premiere Pro Not Connected'
-                    : sequenceInfo?.success
-                      ? sequenceInfo.sequenceName || 'Unknown Sequence'
-                      : 'No Active Sequence'}
-                </span>
-                <Button
-                  variant={premiereConnected ? 'outline' : 'secondary'}
-                  size="sm"
-                  onClick={handleRefreshSequenceInfo}
-                  disabled={!premiereConnected}
-                  className="text-xs"
-                >
-                  Refresh
-                </Button>
-              </div>
-              {!premiereConnected ? (
-                <ConnectionPrompt action="view sequence information" size="sm" />
-              ) : sequenceInfo?.success ? (
-                <div className="text-xs text-gray-500">Project: {sequenceInfo.projectName}</div>
-              ) : (
-                <div className="text-xs text-gray-500">
-                  {sequenceInfo?.error || 'Click refresh to get sequence information'}
-                </div>
-              )}
-            </div>
-          </div>
+          {/* Active Sequence */}
+          <ActiveSequence
+            sequenceInfo={sequenceInfo}
+            premiereConnected={premiereConnected}
+            onRefresh={handleRefreshSequenceInfo}
+          />
 
           {/* Define Sections - always show, with different states based on connection */}
           <div className="mb-5">
@@ -403,7 +380,7 @@ Check Premiere Pro for the results.`)
                         : 'outline'
                   }
                   size="sm"
-                  className={`flex-1 text-xs ${selectedRange === 'entire' && premiereConnected ? 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200' : ''}`}
+                  className="flex-1 text-xs"
                   onClick={() => handleRangeSelection('entire')}
                   disabled={!premiereConnected}
                 >
@@ -418,7 +395,7 @@ Check Premiere Pro for the results.`)
                         : 'outline'
                   }
                   size="sm"
-                  className={`flex-1 text-xs ${selectedRange === 'inout' && premiereConnected ? 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200' : ''}`}
+                  className="flex-1 text-xs"
                   onClick={() => handleRangeSelection('inout')}
                   disabled={!premiereConnected}
                 >
@@ -433,7 +410,7 @@ Check Premiere Pro for the results.`)
                         : 'outline'
                   }
                   size="sm"
-                  className={`flex-1 text-xs ${selectedRange === 'selected' && premiereConnected ? 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200' : ''}`}
+                  className="flex-1 text-xs"
                   onClick={() => handleRangeSelection('selected')}
                   disabled={!premiereConnected}
                 >
@@ -463,183 +440,177 @@ Check Premiere Pro for the results.`)
               ) : null}
             </div>
 
-            {/* Timeline and Audio Tracks */}
-            <div>
-              {/* Timeline Display */}
-              <div className="mb-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-5 h-5 bg-gray-300 rounded-sm flex items-center justify-center">
-                    <div className="w-3 h-0.5 bg-gray-600"></div>
-                  </div>
-                  <div className="flex-1">
-                    <div className="h-1 bg-gray-300 rounded-sm relative">
-                      {/* Timeline bar with gradient to show active range */}
-                      {!premiereConnected ? (
-                        <div className="absolute top-0 bottom-0 rounded-sm bg-gray-400 opacity-50 w-full"></div>
-                      ) : (
-                        (() => {
-                          const rangeInfo = getRangeInfo()
-                          const totalDuration = sequenceInfo?.durationSeconds || 1
-                          const startPercent =
-                            selectedRange === 'entire'
-                              ? 0
-                              : (rangeInfo.startTimeSeconds / totalDuration) * 100
-                          const endPercent =
-                            selectedRange === 'entire'
-                              ? 100
-                              : (rangeInfo.endTimeSeconds / totalDuration) * 100
+            {/* Audio Tracks */}
+            <div className="mb-8">
+              <div className="block text-sm font-semibold text-black mb-4">Audio Tracks</div>
+              {!premiereConnected ? (
+                <ConnectionPrompt action="view audio tracks" size="sm" className="mb-6" />
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {Array.from({ length: sequenceInfo?.audioTracks || 0 }, (_, i) => {
+                    const trackNumber = i + 1
+                    const isSelected = selectedAudioTracks.includes(trackNumber)
 
-                          return (
-                            <div
-                              className={`absolute top-0 bottom-0 rounded-sm transition-all duration-300 ${
-                                selectedRange === 'entire'
-                                  ? 'bg-gradient-to-r from-blue-500 to-blue-400'
-                                  : selectedRange === 'inout'
-                                    ? sequenceInfo?.hasWorkArea
-                                      ? 'bg-gradient-to-r from-purple-500 to-purple-400'
-                                      : 'bg-gradient-to-r from-orange-500 to-orange-400'
-                                    : 'bg-gradient-to-r from-green-500 to-green-400'
-                              }`}
-                              style={{
-                                left: `${Math.max(0, Math.min(startPercent, 100))}%`,
-                                right: `${Math.max(0, 100 - Math.min(endPercent, 100))}%`
-                              }}
-                            ></div>
-                          )
-                        })()
-                      )}
-                    </div>
-                  </div>
-                </div>
-                {/* Time indicators */}
-                <div className="flex justify-between text-[10px] text-gray-500 ml-7">
-                  <span>{!premiereConnected ? '00:00:00' : getRangeInfo().startTime}</span>
-                  <span className="text-[9px] text-gray-600">
-                    Duration:{' '}
-                    {!premiereConnected ? '00:00:00' : formatTime(getRangeInfo().duration)}
-                  </span>
-                  <span>{!premiereConnected ? '00:00:00' : getRangeInfo().endTime}</span>
-                </div>
-              </div>
-
-              {/* Audio Tracks List */}
-              <div>
-                <div className="block text-sm font-semibold text-black mb-4">Audio Tracks</div>
-                {!premiereConnected ? (
-                  <ConnectionPrompt action="view audio tracks" size="sm" className="mb-6" />
-                ) : (
-                  <div className="flex flex-col gap-1">
-                    {Array.from({ length: sequenceInfo?.audioTracks || 0 }, (_, i) => {
-                      const trackNumber = i + 1
-                      const isSelected = selectedAudioTracks.includes(trackNumber)
-
-                      return (
-                        <div
-                          key={trackNumber}
-                          className="flex items-center gap-3 p-2 bg-gray-50 border border-gray-200 rounded cursor-pointer hover:bg-gray-100 transition-colors"
-                          onClick={() => {
-                            if (isSelected) {
-                              setSelectedAudioTracks((prev) =>
-                                prev.filter((t) => t !== trackNumber)
-                              )
-                            } else {
-                              setSelectedAudioTracks((prev) => [...prev, trackNumber])
-                            }
-                          }}
-                        >
-                          <Checkbox
-                            checked={isSelected}
-                            onChange={() => {}} // onClick handler on parent handles this
-                            className="flex-shrink-0"
-                          />
-                          <span className="text-xs font-semibold text-black min-w-[20px]">
-                            A{trackNumber}
-                          </span>
-                          {/* Static waveform graphic */}
-                          <div className="flex-1 h-6 flex items-end gap-px px-2">
-                            {/* Generate static waveform bars */}
-                            {Array.from({ length: 40 }, (_, barIndex) => {
-                              const heights = [
-                                4, 8, 12, 16, 20, 14, 10, 6, 8, 18, 22, 16, 12, 8, 4, 6, 10, 14, 18,
-                                12, 8, 6, 10, 16, 20, 14, 8, 4, 6, 12, 18, 16, 10, 8, 6, 4, 8, 12,
-                                16, 10
-                              ]
-                              return (
-                                <div
-                                  key={barIndex}
-                                  className={`w-0.5 rounded-sm transition-colors duration-300 ${
-                                    isSelected ? 'bg-blue-500' : 'bg-gray-300'
-                                  }`}
-                                  style={{ height: `${heights[barIndex]}px` }}
-                                />
-                              )
-                            })}
-                          </div>
+                    return (
+                      <div
+                        key={trackNumber}
+                        className="flex items-center gap-3 p-2 bg-gray-50 border border-gray-200 rounded cursor-pointer hover:bg-gray-100 transition-colors"
+                        onClick={() => {
+                          if (isSelected) {
+                            setSelectedAudioTracks((prev) => prev.filter((t) => t !== trackNumber))
+                          } else {
+                            setSelectedAudioTracks((prev) => [...prev, trackNumber])
+                          }
+                        }}
+                      >
+                        <Checkbox
+                          checked={isSelected}
+                          onChange={() => {}} // onClick handler on parent handles this
+                          className="flex-shrink-0"
+                        />
+                        <span className="text-xs font-semibold text-black min-w-[20px]">
+                          A{trackNumber}
+                        </span>
+                        {/* Static waveform graphic */}
+                        <div className="flex-1 h-4 flex items-end gap-px">
+                          {/* Generate static waveform bars */}
+                          {Array.from({ length: 80 }, (_, barIndex) => {
+                            const heights = [
+                              4, 8, 12, 16, 20, 14, 10, 6, 8, 18, 22, 16, 12, 8, 4, 6, 10, 14, 18,
+                              12, 8, 6, 4, 8, 12, 16, 20, 14, 10, 6, 8, 18, 22, 16, 12, 8, 4, 6, 10,
+                              14, 18, 12, 8, 6, 4, 8, 12, 16, 20, 14, 10, 6, 8, 18, 22, 16, 12, 8,
+                              4, 6, 10, 14, 18, 12, 8, 6, 4, 8, 12, 16, 20, 14, 10, 6, 8, 18, 22,
+                              16, 12, 8, 4, 6, 10, 14, 18, 12, 8, 6, 4, 8, 12, 16, 20, 14, 10, 6, 8,
+                              18, 22, 16, 12, 8, 4, 6, 10, 14, 18, 12, 8, 6, 4, 8, 12, 16, 20, 14,
+                              10, 6, 8, 18, 22, 16, 12, 8, 4, 6, 10, 14, 18, 12, 8, 6, 4, 8, 12, 16,
+                              20, 14, 10, 6, 8, 18, 22, 16, 12, 8, 4, 6, 10, 14, 18, 12, 8, 6, 4, 8,
+                              12, 16, 20, 14, 10, 6, 8, 18, 22, 16, 12, 8, 4, 6, 10, 14, 18, 12, 8,
+                              6, 4, 8, 12, 16, 20, 14, 10, 6, 8, 18, 22, 16, 12, 8, 4, 6, 10, 14,
+                              18, 12, 8, 6, 4, 8, 12, 16, 20, 14, 10, 6, 8, 18, 22, 16, 12, 8, 4, 6,
+                              10, 14, 18, 12, 8, 6, 4, 8, 12, 16, 20, 14, 10, 6, 8, 18, 22, 16, 12,
+                              8, 4, 6, 10, 14, 18, 12, 8, 6, 4, 8, 12, 16, 20, 14, 10, 6, 8, 18, 22,
+                              16, 12, 8, 4, 6, 10, 14, 18, 12, 8, 6, 4, 8, 12, 16, 20, 14, 10, 6, 8,
+                              18, 22, 16, 12, 8, 4, 6, 10, 14, 18, 12, 8, 6, 4, 8, 12, 16, 20, 14,
+                              10, 6, 8, 18, 22, 16, 12, 8, 4, 6, 10, 14, 18, 12, 8, 6, 4, 8, 12, 16,
+                              20, 14, 10, 6, 8, 18, 22, 16, 12, 8, 4, 6, 10, 14, 18, 12, 8, 6, 4, 8,
+                              12, 16, 20, 14, 10, 6, 8, 18, 22, 16, 12, 8, 4, 6, 10, 14, 18, 12, 8,
+                              6, 4, 8, 12, 16, 20, 14, 10, 6, 8, 18, 22, 16, 12, 8, 4, 6, 10, 14,
+                              18, 12, 8, 6, 4, 8, 12, 16, 20
+                            ]
+                            return (
+                              <div
+                                key={barIndex}
+                                className={`w-0.5 rounded-sm transition-colors duration-300 ${
+                                  isSelected ? 'bg-black' : 'bg-gray-300'
+                                }`}
+                                style={{ height: `${heights[barIndex]}px` }}
+                              />
+                            )
+                          })}
                         </div>
-                      )
-                    })}
-                  </div>
-                )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Settings */}
+          <div className="mb-8">
+            <div className="block text-sm font-semibold text-black mb-4">Settings</div>
+
+            {/* Silence Threshold Slider */}
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-black mb-2">
+                Silence Threshold: {silenceThreshold} dB
+              </label>
+              <Slider
+                value={[silenceThreshold]}
+                onValueChange={(value) => setSilenceThreshold(value[0])}
+                min={-60}
+                max={0}
+                step={1}
+                className="w-full"
+              />
+              <div className="flex justify-between mt-1 text-xs text-gray-500">
+                <span>-60 dB</span>
+                <span>0 dB</span>
+              </div>
+            </div>
+
+            {/* Minimum Silence Length Slider */}
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-black mb-2">
+                Minimum Silence Length: {minSilenceLen} ms
+              </label>
+              <Slider
+                value={[minSilenceLen]}
+                onValueChange={(value) => setMinSilenceLen(value[0])}
+                min={100}
+                max={5000}
+                step={1}
+                className="w-full"
+              />
+              <div className="flex justify-between mt-1 text-xs text-gray-500">
+                <span>100 ms</span>
+                <span>5000 ms</span>
+              </div>
+            </div>
+
+            {/* Silence Padding Slider */}
+            <div className="mb-0">
+              <label className="block text-xs font-semibold text-black mb-2">
+                Silence Padding: {silencePadding} ms
+              </label>
+              <Slider
+                value={[silencePadding]}
+                onValueChange={(value) => setSilencePadding(value[0])}
+                min={0}
+                max={1000}
+                step={1}
+                className="w-full"
+              />
+              <div className="flex justify-between mt-1 text-xs text-gray-500">
+                <span>0 ms</span>
+                <span>1000 ms</span>
               </div>
             </div>
           </div>
 
-          {/* Silence Threshold Slider */}
+          {/* Silence Management */}
           <div className="mb-5">
-            <div className="block text-sm font-semibold text-black mb-4">Settings</div>
-            <label className="block text-xs font-semibold text-black mb-2">
-              Silence Threshold: {silenceThreshold} dB
-            </label>
-            <Slider
-              value={[silenceThreshold]}
-              onValueChange={(value) => setSilenceThreshold(value[0])}
-              min={-60}
-              max={0}
-              step={1}
-              className="w-full"
-            />
-            <div className="flex justify-between mt-1 text-xs text-gray-500">
-              <span>-60 dB</span>
-              <span>0 dB</span>
-            </div>
-          </div>
-
-          {/* Minimum Silence Length Slider */}
-          <div className="mb-5">
-            <label className="block text-xs font-semibold text-black mb-2">
-              Minimum Silence Length: {minSilenceLen} ms
-            </label>
-            <Slider
-              value={[minSilenceLen]}
-              onValueChange={(value) => setMinSilenceLen(value[0])}
-              min={100}
-              max={5000}
-              step={1}
-              className="w-full"
-            />
-            <div className="flex justify-between mt-1 text-xs text-gray-500">
-              <span>100 ms</span>
-              <span>5000 ms</span>
-            </div>
-          </div>
-
-          {/* Silence Padding Slider */}
-          <div className="mb-5">
-            <label className="block text-xs font-semibold text-black mb-2">
-              Silence Padding: {silencePadding} ms
-            </label>
-            <Slider
-              value={[silencePadding]}
-              onValueChange={(value) => setSilencePadding(value[0])}
-              min={0}
-              max={1000}
-              step={1}
-              className="w-full"
-            />
-            <div className="flex justify-between mt-1 text-xs text-gray-500">
-              <span>0 ms</span>
-              <span>1000 ms</span>
-            </div>
+            <div className="block text-sm font-semibold text-black mb-4">Silence Management</div>
+            <RadioGroup
+              value={silenceManagement}
+              onValueChange={setSilenceManagement}
+              className="space-y-2"
+            >
+              <div className="flex items-center gap-3">
+                <RadioGroupItem value="remove" id="remove" />
+                <Label htmlFor="remove" className="text-xs text-black">
+                  Remove silences
+                </Label>
+              </div>
+              <div className="flex items-center gap-3">
+                <RadioGroupItem value="keep" id="keep" />
+                <Label htmlFor="keep" className="text-xs text-black">
+                  Keep silences
+                </Label>
+              </div>
+              <div className="flex items-center gap-3">
+                <RadioGroupItem value="mute" id="mute" />
+                <Label htmlFor="mute" className="text-xs text-black">
+                  Mute silences
+                </Label>
+              </div>
+              <div className="flex items-center gap-3">
+                <RadioGroupItem value="keep-spaces" id="keep-spaces" />
+                <Label htmlFor="keep-spaces" className="text-xs text-black">
+                  Remove silences but keep spaces
+                </Label>
+              </div>
+            </RadioGroup>
           </div>
 
           {/* Process Button */}
@@ -653,47 +624,6 @@ Check Premiere Pro for the results.`)
             >
               {isProcessing ? 'Processing...' : 'Process Audio'}
             </Button>
-          </div>
-
-          {/* Status Display */}
-          <div className="mb-8">
-            <label className="block text-sm font-semibold text-black mb-2">Status</label>
-            <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 font-mono min-h-[60px] leading-relaxed">
-              {status}
-              {results && results.length > 0 && (
-                <div className="mt-2">
-                  <strong>Silence Ranges ({results.length} total):</strong>
-                  {results.length <= 10 ? (
-                    // Show all ranges if 10 or fewer
-                    results.map((range, index) => (
-                      <div key={index} className="ml-2">
-                        {index + 1}. {range[0].toFixed(2)}s - {range[1].toFixed(2)}s (
-                        {(range[1] - range[0]).toFixed(2)}s)
-                      </div>
-                    ))
-                  ) : (
-                    // Show first 5 and last 5 if more than 10
-                    <>
-                      {results.slice(0, 5).map((range, index) => (
-                        <div key={index} className="ml-2">
-                          {index + 1}. {range[0].toFixed(2)}s - {range[1].toFixed(2)}s (
-                          {(range[1] - range[0]).toFixed(2)}s)
-                        </div>
-                      ))}
-                      <div className="ml-2 italic text-gray-500">
-                        ... {results.length - 10} more ranges ...
-                      </div>
-                      {results.slice(-5).map((range, index) => (
-                        <div key={results.length - 5 + index} className="ml-2">
-                          {results.length - 5 + index + 1}. {range[0].toFixed(2)}s -{' '}
-                          {range[1].toFixed(2)}s ({(range[1] - range[0]).toFixed(2)}s)
-                        </div>
-                      ))}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </ScrollArea>
