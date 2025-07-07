@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react'
-import ReturnHomeButton from './ReturnHomeButton'
-import PremierConnectionStatus from './PremierConnectionStatus'
+import { ScrollArea } from './ui/scroll-area'
 
-function RemoveSilences(): React.JSX.Element {
+interface RemoveSilencesProps {
+  premiereConnected: boolean
+}
+
+function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.Element {
   const [silenceThreshold, setSilenceThreshold] = useState<number>(-30)
   const [minSilenceLen, setMinSilenceLen] = useState<number>(1000)
   const [silencePadding, setSilencePadding] = useState<number>(100)
   const [status, setStatus] = useState<string>('Waiting for Premiere Pro connection...')
   const [isProcessing, setIsProcessing] = useState<boolean>(false)
   const [results, setResults] = useState<number[][] | null>(null)
-  const [premiereConnected, setPremiereConnected] = useState<boolean>(false)
   const [sequenceInfo, setSequenceInfo] = useState<{
     success: boolean
     sequenceName?: string
@@ -65,32 +67,17 @@ function RemoveSilences(): React.JSX.Element {
     setResults(null)
   }, [silenceThreshold, minSilenceLen, silencePadding])
 
-  // Listen for Premiere Pro connection status updates
+  // Update status when connection changes
   useEffect(() => {
-    const handlePremiereStatus = (event: any, data: { connected: boolean }) => {
-      setPremiereConnected(data.connected)
-      if (data.connected) {
-        setStatus('Premiere Pro connected! Ready to process.')
-        // Automatically fetch sequence info when connected
-        handleRefreshSequenceInfo()
-      } else {
-        setStatus('Premiere Pro disconnected.')
-        setSequenceInfo(null)
-      }
+    if (premiereConnected) {
+      setStatus('Premiere Pro connected! Ready to process.')
+      // Automatically fetch sequence info when connected
+      handleRefreshSequenceInfo()
+    } else {
+      setStatus('Premiere Pro disconnected.')
+      setSequenceInfo(null)
     }
-
-    // Add IPC listener for Premiere status updates
-    if (window.electron && window.electron.ipcRenderer) {
-      window.electron.ipcRenderer.on('premiere-status-update', handlePremiereStatus)
-    }
-
-    return () => {
-      // Cleanup listener on unmount
-      if (window.electron && window.electron.ipcRenderer) {
-        window.electron.ipcRenderer.removeAllListeners('premiere-status-update')
-      }
-    }
-  }, [])
+  }, [premiereConnected])
 
   // Listen for sequence info updates from Premiere Pro
   useEffect(() => {
@@ -356,39 +343,39 @@ Check Premiere Pro for the results.`)
   }
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center p-8 relative">
-      <ReturnHomeButton onReturnHome={() => window.location.reload()} />
-
-      <div className="w-full max-w-lg mx-auto bg-white rounded-xl shadow-lg p-6 border border-gray-200">
-        <h2 className="text-2xl font-bold text-black text-center mb-6">Remove Silences</h2>
-
-        {/* Connection Status */}
-        <PremierConnectionStatus isConnected={premiereConnected} className="mb-4" />
-
-        {/* Active Sequence Info - only show when connected */}
-        {premiereConnected && (
+    <div className="w-full bg-white">
+      <ScrollArea className="h-[calc(100vh-12rem)] w-full">
+        <div className="p-6">
+          {/* Active Sequence Info - always show, with different states based on connection */}
           <div className="mb-5">
             <label className="block text-sm font-semibold text-black mb-2">Active Sequence</label>
             <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
               <div className="flex justify-between items-center mb-2">
                 <span className="font-semibold text-black">
-                  {sequenceInfo?.success
-                    ? sequenceInfo.sequenceName || 'Unknown Sequence'
-                    : 'No Active Sequence'}
+                  {!premiereConnected
+                    ? 'Premiere Pro Not Connected'
+                    : sequenceInfo?.success
+                      ? sequenceInfo.sequenceName || 'Unknown Sequence'
+                      : 'No Active Sequence'}
                 </span>
                 <button
-                  className="px-2 py-1 text-xs font-semibold text-black bg-white border border-gray-300 rounded hover:bg-gray-100 transition-colors"
+                  className={`px-2 py-1 text-xs font-semibold rounded transition-colors ${
+                    premiereConnected
+                      ? 'text-black bg-white border border-gray-300 hover:bg-gray-100'
+                      : 'text-gray-400 bg-gray-100 border border-gray-200 cursor-not-allowed'
+                  }`}
                   onClick={handleRefreshSequenceInfo}
+                  disabled={!premiereConnected}
                 >
                   Refresh
                 </button>
               </div>
-              {sequenceInfo?.success ? (
+              {!premiereConnected ? (
                 <div className="text-xs text-gray-500">
-                  Project: {sequenceInfo.projectName} | Tracks: {sequenceInfo.videoTracks}V/
-                  {sequenceInfo.audioTracks}A
-                  {sequenceInfo.frameRate && ` | ${sequenceInfo.frameRate} fps`}
+                  Connect to Premiere Pro to view sequence information
                 </div>
+              ) : sequenceInfo?.success ? (
+                <div className="text-xs text-gray-500">Project: {sequenceInfo.projectName}</div>
               ) : (
                 <div className="text-xs text-gray-500">
                   {sequenceInfo?.error || 'Click refresh to get sequence information'}
@@ -396,10 +383,8 @@ Check Premiere Pro for the results.`)
               )}
             </div>
           </div>
-        )}
 
-        {/* Define Sections */}
-        {premiereConnected && sequenceInfo?.success && (
+          {/* Define Sections - always show, with different states based on connection */}
           <div className="mb-5">
             <label className="block text-sm font-semibold text-black mb-2">Define Sections</label>
             <div className="text-xs text-gray-500 mb-3">
@@ -411,38 +396,51 @@ Check Premiere Pro for the results.`)
               <div className="flex gap-2 mb-3">
                 <button
                   className={`flex-1 px-3 py-2 text-xs font-semibold rounded transition-colors ${
-                    selectedRange === 'entire'
-                      ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                      : 'bg-gray-50 text-gray-700 border border-gray-300 hover:bg-gray-100'
+                    !premiereConnected
+                      ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                      : selectedRange === 'entire'
+                        ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                        : 'bg-gray-50 text-gray-700 border border-gray-300 hover:bg-gray-100'
                   }`}
                   onClick={() => handleRangeSelection('entire')}
+                  disabled={!premiereConnected}
                 >
                   Entire timeline
                 </button>
                 <button
                   className={`flex-1 px-3 py-2 text-xs font-semibold rounded transition-colors ${
-                    selectedRange === 'inout'
-                      ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                      : 'bg-gray-50 text-gray-700 border border-gray-300 hover:bg-gray-100'
+                    !premiereConnected
+                      ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                      : selectedRange === 'inout'
+                        ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                        : 'bg-gray-50 text-gray-700 border border-gray-300 hover:bg-gray-100'
                   }`}
                   onClick={() => handleRangeSelection('inout')}
+                  disabled={!premiereConnected}
                 >
                   In/Out points
                 </button>
                 <button
                   className={`flex-1 px-3 py-2 text-xs font-semibold rounded transition-colors ${
-                    selectedRange === 'selected'
-                      ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                      : 'bg-gray-50 text-gray-700 border border-gray-300 hover:bg-gray-100'
+                    !premiereConnected
+                      ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                      : selectedRange === 'selected'
+                        ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                        : 'bg-gray-50 text-gray-700 border border-gray-300 hover:bg-gray-100'
                   }`}
                   onClick={() => handleRangeSelection('selected')}
+                  disabled={!premiereConnected}
                 >
                   Selected clips
                 </button>
               </div>
 
               {/* Range status indicator */}
-              {selectedRange === 'inout' && (
+              {!premiereConnected ? (
+                <div className="p-2 bg-gray-50 border border-gray-200 rounded text-[10px] text-gray-500 mb-3">
+                  🔌 Connect to Premiere Pro to configure timeline ranges
+                </div>
+              ) : selectedRange === 'inout' ? (
                 <div className="p-2 bg-gray-50 border border-gray-200 rounded text-[10px] text-gray-600 mb-3">
                   {sequenceInfo?.hasWorkArea && sequenceInfo?.workAreaEnabled
                     ? '📊 Using Work Area range'
@@ -452,15 +450,13 @@ Check Premiere Pro for the results.`)
                         ? '⏺️ Using Legacy In/Out points'
                         : '⚠️ No In/Out points set - using entire timeline'}
                 </div>
-              )}
-
-              {selectedRange === 'selected' && (
+              ) : selectedRange === 'selected' ? (
                 <div className="p-2 bg-gray-50 border border-gray-200 rounded text-[10px] text-gray-600 mb-3">
                   {selectedClipsInfo?.hasSelectedClips
                     ? `✅ ${selectedClipsInfo.selectedClips?.length || 0} clips selected`
                     : '⚠️ No clips selected - select clips in timeline first'}
                 </div>
-              )}
+              ) : null}
             </div>
 
             {/* Timeline and Audio Tracks */}
@@ -474,223 +470,236 @@ Check Premiere Pro for the results.`)
                   <div className="flex-1">
                     <div className="h-1 bg-gray-300 rounded-sm relative">
                       {/* Timeline bar with gradient to show active range */}
-                      {(() => {
-                        const rangeInfo = getRangeInfo()
-                        const totalDuration = sequenceInfo?.durationSeconds || 1
-                        const startPercent =
-                          selectedRange === 'entire'
-                            ? 0
-                            : (rangeInfo.startTimeSeconds / totalDuration) * 100
-                        const endPercent =
-                          selectedRange === 'entire'
-                            ? 100
-                            : (rangeInfo.endTimeSeconds / totalDuration) * 100
+                      {!premiereConnected ? (
+                        <div className="absolute top-0 bottom-0 rounded-sm bg-gray-400 opacity-50 w-full"></div>
+                      ) : (
+                        (() => {
+                          const rangeInfo = getRangeInfo()
+                          const totalDuration = sequenceInfo?.durationSeconds || 1
+                          const startPercent =
+                            selectedRange === 'entire'
+                              ? 0
+                              : (rangeInfo.startTimeSeconds / totalDuration) * 100
+                          const endPercent =
+                            selectedRange === 'entire'
+                              ? 100
+                              : (rangeInfo.endTimeSeconds / totalDuration) * 100
 
-                        return (
-                          <div
-                            className={`absolute top-0 bottom-0 rounded-sm transition-all duration-300 ${
-                              selectedRange === 'entire'
-                                ? 'bg-gradient-to-r from-blue-500 to-blue-400'
-                                : selectedRange === 'inout'
-                                  ? sequenceInfo?.hasWorkArea
-                                    ? 'bg-gradient-to-r from-purple-500 to-purple-400'
-                                    : 'bg-gradient-to-r from-orange-500 to-orange-400'
-                                  : 'bg-gradient-to-r from-green-500 to-green-400'
-                            }`}
-                            style={{
-                              left: `${Math.max(0, Math.min(startPercent, 100))}%`,
-                              right: `${Math.max(0, 100 - Math.min(endPercent, 100))}%`
-                            }}
-                          ></div>
-                        )
-                      })()}
+                          return (
+                            <div
+                              className={`absolute top-0 bottom-0 rounded-sm transition-all duration-300 ${
+                                selectedRange === 'entire'
+                                  ? 'bg-gradient-to-r from-blue-500 to-blue-400'
+                                  : selectedRange === 'inout'
+                                    ? sequenceInfo?.hasWorkArea
+                                      ? 'bg-gradient-to-r from-purple-500 to-purple-400'
+                                      : 'bg-gradient-to-r from-orange-500 to-orange-400'
+                                    : 'bg-gradient-to-r from-green-500 to-green-400'
+                              }`}
+                              style={{
+                                left: `${Math.max(0, Math.min(startPercent, 100))}%`,
+                                right: `${Math.max(0, 100 - Math.min(endPercent, 100))}%`
+                              }}
+                            ></div>
+                          )
+                        })()
+                      )}
                     </div>
                   </div>
                 </div>
                 {/* Time indicators */}
                 <div className="flex justify-between text-[10px] text-gray-500 ml-7">
-                  <span>{getRangeInfo().startTime}</span>
+                  <span>{!premiereConnected ? '00:00:00' : getRangeInfo().startTime}</span>
                   <span className="text-[9px] text-gray-600">
-                    Duration: {formatTime(getRangeInfo().duration)}
+                    Duration:{' '}
+                    {!premiereConnected ? '00:00:00' : formatTime(getRangeInfo().duration)}
                   </span>
-                  <span>{getRangeInfo().endTime}</span>
+                  <span>{!premiereConnected ? '00:00:00' : getRangeInfo().endTime}</span>
                 </div>
               </div>
 
               {/* Audio Tracks List */}
               <div>
                 <div className="text-xs font-semibold text-black mb-2">Audio Tracks</div>
-                <div className="flex flex-col gap-1">
-                  {Array.from({ length: sequenceInfo.audioTracks || 0 }, (_, i) => {
-                    const trackNumber = i + 1
-                    const isSelected = selectedAudioTracks.includes(trackNumber)
+                {!premiereConnected ? (
+                  <div className="p-4 bg-gray-50 border border-gray-200 rounded text-center text-sm text-gray-500">
+                    Connect to Premiere Pro to view audio tracks
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    {Array.from({ length: sequenceInfo?.audioTracks || 0 }, (_, i) => {
+                      const trackNumber = i + 1
+                      const isSelected = selectedAudioTracks.includes(trackNumber)
 
-                    return (
-                      <div
-                        key={trackNumber}
-                        className="flex items-center gap-3 p-2 bg-gray-50 border border-gray-200 rounded cursor-pointer hover:bg-gray-100 transition-colors"
-                        onClick={() => {
-                          if (isSelected) {
-                            setSelectedAudioTracks((prev) => prev.filter((t) => t !== trackNumber))
-                          } else {
-                            setSelectedAudioTracks((prev) => [...prev, trackNumber])
-                          }
-                        }}
-                      >
+                      return (
                         <div
-                          className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center text-[10px] flex-shrink-0 ${
-                            isSelected
-                              ? 'bg-orange-500 border-orange-500 text-white'
-                              : 'bg-transparent border-gray-300'
-                          }`}
+                          key={trackNumber}
+                          className="flex items-center gap-3 p-2 bg-gray-50 border border-gray-200 rounded cursor-pointer hover:bg-gray-100 transition-colors"
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedAudioTracks((prev) =>
+                                prev.filter((t) => t !== trackNumber)
+                              )
+                            } else {
+                              setSelectedAudioTracks((prev) => [...prev, trackNumber])
+                            }
+                          }}
                         >
-                          {isSelected && '✓'}
+                          <div
+                            className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center text-[10px] flex-shrink-0 ${
+                              isSelected
+                                ? 'bg-orange-500 border-orange-500 text-white'
+                                : 'bg-transparent border-gray-300'
+                            }`}
+                          >
+                            {isSelected && '✓'}
+                          </div>
+                          <span className="text-xs font-semibold text-black min-w-[20px]">
+                            A{trackNumber}
+                          </span>
+                          {/* Static waveform graphic */}
+                          <div className="flex-1 h-6 flex items-end gap-px px-2">
+                            {/* Generate static waveform bars */}
+                            {Array.from({ length: 40 }, (_, barIndex) => {
+                              const heights = [
+                                4, 8, 12, 16, 20, 14, 10, 6, 8, 18, 22, 16, 12, 8, 4, 6, 10, 14, 18,
+                                12, 8, 6, 10, 16, 20, 14, 8, 4, 6, 12, 18, 16, 10, 8, 6, 4, 8, 12,
+                                16, 10
+                              ]
+                              return (
+                                <div
+                                  key={barIndex}
+                                  className={`w-0.5 rounded-sm transition-colors duration-300 ${
+                                    isSelected ? 'bg-blue-500' : 'bg-gray-300'
+                                  }`}
+                                  style={{ height: `${heights[barIndex]}px` }}
+                                />
+                              )
+                            })}
+                          </div>
                         </div>
-                        <span className="text-xs font-semibold text-black min-w-[20px]">
-                          A{trackNumber}
-                        </span>
-                        {/* Static waveform graphic */}
-                        <div className="flex-1 h-6 flex items-end gap-px px-2">
-                          {/* Generate static waveform bars */}
-                          {Array.from({ length: 40 }, (_, barIndex) => {
-                            const heights = [
-                              4, 8, 12, 16, 20, 14, 10, 6, 8, 18, 22, 16, 12, 8, 4, 6, 10, 14, 18,
-                              12, 8, 6, 10, 16, 20, 14, 8, 4, 6, 12, 18, 16, 10, 8, 6, 4, 8, 12, 16,
-                              10
-                            ]
-                            return (
-                              <div
-                                key={barIndex}
-                                className={`w-0.5 rounded-sm transition-colors duration-300 ${
-                                  isSelected ? 'bg-blue-500' : 'bg-gray-300'
-                                }`}
-                                style={{ height: `${heights[barIndex]}px` }}
-                              />
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </div>
-        )}
 
-        {/* Silence Threshold Slider */}
-        <div className="mb-5">
-          <label className="block text-sm font-semibold text-black mb-2">
-            Silence Threshold: {silenceThreshold} dB
-          </label>
-          <input
-            type="range"
-            min="-60"
-            max="0"
-            value={silenceThreshold}
-            onChange={(e) => setSilenceThreshold(Number(e.target.value))}
-            className="w-full h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer slider"
-          />
-          <div className="flex justify-between mt-1 text-xs text-gray-500">
-            <span>-60 dB</span>
-            <span>0 dB</span>
+          {/* Silence Threshold Slider */}
+          <div className="mb-5">
+            <label className="block text-sm font-semibold text-black mb-2">
+              Silence Threshold: {silenceThreshold} dB
+            </label>
+            <input
+              type="range"
+              min="-60"
+              max="0"
+              value={silenceThreshold}
+              onChange={(e) => setSilenceThreshold(Number(e.target.value))}
+              className="w-full h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer slider"
+            />
+            <div className="flex justify-between mt-1 text-xs text-gray-500">
+              <span>-60 dB</span>
+              <span>0 dB</span>
+            </div>
           </div>
-        </div>
 
-        {/* Minimum Silence Length Slider */}
-        <div className="mb-5">
-          <label className="block text-sm font-semibold text-black mb-2">
-            Minimum Silence Length: {minSilenceLen} ms
-          </label>
-          <input
-            type="range"
-            min="100"
-            max="5000"
-            value={minSilenceLen}
-            onChange={(e) => setMinSilenceLen(Number(e.target.value))}
-            className="w-full h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer slider"
-          />
-          <div className="flex justify-between mt-1 text-xs text-gray-500">
-            <span>100 ms</span>
-            <span>5000 ms</span>
+          {/* Minimum Silence Length Slider */}
+          <div className="mb-5">
+            <label className="block text-sm font-semibold text-black mb-2">
+              Minimum Silence Length: {minSilenceLen} ms
+            </label>
+            <input
+              type="range"
+              min="100"
+              max="5000"
+              value={minSilenceLen}
+              onChange={(e) => setMinSilenceLen(Number(e.target.value))}
+              className="w-full h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer slider"
+            />
+            <div className="flex justify-between mt-1 text-xs text-gray-500">
+              <span>100 ms</span>
+              <span>5000 ms</span>
+            </div>
           </div>
-        </div>
 
-        {/* Silence Padding Slider */}
-        <div className="mb-5">
-          <label className="block text-sm font-semibold text-black mb-2">
-            Silence Padding: {silencePadding} ms
-          </label>
-          <input
-            type="range"
-            min="0"
-            max="1000"
-            value={silencePadding}
-            onChange={(e) => setSilencePadding(Number(e.target.value))}
-            className="w-full h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer slider"
-          />
-          <div className="flex justify-between mt-1 text-xs text-gray-500">
-            <span>0 ms</span>
-            <span>1000 ms</span>
+          {/* Silence Padding Slider */}
+          <div className="mb-5">
+            <label className="block text-sm font-semibold text-black mb-2">
+              Silence Padding: {silencePadding} ms
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="1000"
+              value={silencePadding}
+              onChange={(e) => setSilencePadding(Number(e.target.value))}
+              className="w-full h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer slider"
+            />
+            <div className="flex justify-between mt-1 text-xs text-gray-500">
+              <span>0 ms</span>
+              <span>1000 ms</span>
+            </div>
           </div>
-        </div>
 
-        {/* Process Button */}
-        <div className="mb-5">
-          <button
-            className={`w-full px-6 py-3 text-base font-semibold rounded-lg transition-all duration-300 ${
-              isProcessing || !premiereConnected
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-black text-white hover:bg-gray-800 shadow-md hover:shadow-lg'
-            }`}
-            onClick={handleProcessFromPremiere}
-            disabled={isProcessing || !premiereConnected}
-          >
-            {isProcessing ? 'Processing...' : 'Process Audio'}
-          </button>
-        </div>
+          {/* Process Button */}
+          <div className="mb-5">
+            <button
+              className={`w-full px-6 py-3 text-base font-semibold rounded-lg transition-all duration-300 ${
+                isProcessing || !premiereConnected
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-black text-white hover:bg-gray-800 shadow-md hover:shadow-lg'
+              }`}
+              onClick={handleProcessFromPremiere}
+              disabled={isProcessing || !premiereConnected}
+            >
+              {isProcessing ? 'Processing...' : 'Process Audio'}
+            </button>
+          </div>
 
-        {/* Status Display */}
-        <div className="mb-0">
-          <label className="block text-sm font-semibold text-black mb-2">Status</label>
-          <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 font-mono min-h-[60px] leading-relaxed">
-            {status}
-            {results && results.length > 0 && (
-              <div className="mt-2">
-                <strong>Silence Ranges ({results.length} total):</strong>
-                {results.length <= 10 ? (
-                  // Show all ranges if 10 or fewer
-                  results.map((range, index) => (
-                    <div key={index} className="ml-2">
-                      {index + 1}. {range[0].toFixed(2)}s - {range[1].toFixed(2)}s (
-                      {(range[1] - range[0]).toFixed(2)}s)
-                    </div>
-                  ))
-                ) : (
-                  // Show first 5 and last 5 if more than 10
-                  <>
-                    {results.slice(0, 5).map((range, index) => (
+          {/* Status Display */}
+          <div className="mb-8">
+            <label className="block text-sm font-semibold text-black mb-2">Status</label>
+            <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 font-mono min-h-[60px] leading-relaxed">
+              {status}
+              {results && results.length > 0 && (
+                <div className="mt-2">
+                  <strong>Silence Ranges ({results.length} total):</strong>
+                  {results.length <= 10 ? (
+                    // Show all ranges if 10 or fewer
+                    results.map((range, index) => (
                       <div key={index} className="ml-2">
                         {index + 1}. {range[0].toFixed(2)}s - {range[1].toFixed(2)}s (
                         {(range[1] - range[0]).toFixed(2)}s)
                       </div>
-                    ))}
-                    <div className="ml-2 italic text-gray-500">
-                      ... {results.length - 10} more ranges ...
-                    </div>
-                    {results.slice(-5).map((range, index) => (
-                      <div key={results.length - 5 + index} className="ml-2">
-                        {results.length - 5 + index + 1}. {range[0].toFixed(2)}s -{' '}
-                        {range[1].toFixed(2)}s ({(range[1] - range[0]).toFixed(2)}s)
+                    ))
+                  ) : (
+                    // Show first 5 and last 5 if more than 10
+                    <>
+                      {results.slice(0, 5).map((range, index) => (
+                        <div key={index} className="ml-2">
+                          {index + 1}. {range[0].toFixed(2)}s - {range[1].toFixed(2)}s (
+                          {(range[1] - range[0]).toFixed(2)}s)
+                        </div>
+                      ))}
+                      <div className="ml-2 italic text-gray-500">
+                        ... {results.length - 10} more ranges ...
                       </div>
-                    ))}
-                  </>
-                )}
-              </div>
-            )}
+                      {results.slice(-5).map((range, index) => (
+                        <div key={results.length - 5 + index} className="ml-2">
+                          {results.length - 5 + index + 1}. {range[0].toFixed(2)}s -{' '}
+                          {range[1].toFixed(2)}s ({(range[1] - range[0]).toFixed(2)}s)
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </ScrollArea>
     </div>
   )
 }

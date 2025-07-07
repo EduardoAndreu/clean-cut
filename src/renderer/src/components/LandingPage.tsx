@@ -2,18 +2,16 @@ import React from 'react'
 import { Button } from './ui/button'
 import PipelineLabel from './PipelineLabel'
 import SettingsButton from './SettingsButton'
-import PremierConnectionStatus from './PremierConnectionStatus'
 import { Scissors, ZoomIn, BookOpen, Mic, RotateCcw, Filter } from 'lucide-react'
 import logoImg from '../assets/logo.png'
 
 interface LandingPageProps {
   onRemoveSilences: () => void
-  premiereConnected: boolean
 }
 
-function LandingPage({ onRemoveSilences, premiereConnected }: LandingPageProps): React.JSX.Element {
+function LandingPage({ onRemoveSilences }: LandingPageProps): React.JSX.Element {
   return (
-    <div className="min-h-screen bg-white flex flex-col p-8">
+    <div className="min-h-full bg-white flex flex-col p-8">
       {/* Main content container */}
       <div className="flex-1 flex items-center justify-center">
         <div className="container mx-auto">
@@ -80,11 +78,6 @@ function LandingPage({ onRemoveSilences, premiereConnected }: LandingPageProps):
               </Button>
               <PipelineLabel />
             </div>
-          </div>
-
-          {/* Premiere Pro Connection Status - Centered below grid */}
-          <div className="flex justify-center mt-8">
-            <PremierConnectionStatus isConnected={premiereConnected} />
           </div>
         </div>
       </div>

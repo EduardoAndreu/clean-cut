@@ -12,7 +12,7 @@ function ReturnHomeButton({ onReturnHome }: ReturnHomeButtonProps): React.JSX.El
       onClick={onReturnHome}
       variant="ghost"
       size="icon"
-      className="absolute top-4 right-4 text-gray-600 hover:text-gray-900"
+      className="text-gray-600 hover:text-gray-900"
     >
       <Home className="w-5 h-5" />
     </Button>
