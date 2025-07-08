@@ -623,6 +623,54 @@ function connect() {
             })
             break
 
+          case 'request_audio_export':
+            console.log('Received request for audio export:', message.payload)
+            addLogEntry('Received audio export request', 'info')
+
+            const { exportFolder, selectedTracks, selectedRange } = message.payload
+            const selectedTracksJson = JSON.stringify(selectedTracks)
+
+            addLogEntry(
+              `Exporting audio: ${selectedTracks.length} tracks, range: ${selectedRange}`,
+              'info'
+            )
+
+            // Call ExtendScript function to export sequence audio with specific parameters
+            const scriptCall = `exportSequenceAudio('${exportFolder}', '${selectedTracksJson}', '${selectedRange}')`
+            addLogEntry(`ExtendScript call: ${scriptCall}`, 'info')
+
+            cs.evalScript(scriptCall, function (result) {
+              console.log('Audio export result:', result)
+
+              try {
+                const resultData = JSON.parse(result)
+                if (resultData.success) {
+                  addLogEntry(`Audio exported: ${resultData.outputPath}`, 'success')
+                  if (resultData.presetUsed) {
+                    addLogEntry(`Preset used: ${resultData.presetUsed}`, 'info')
+                  }
+                } else {
+                  addLogEntry(`Export failed: ${resultData.error}`, 'error')
+                }
+              } catch (e) {
+                // Handle non-JSON response (might be just the file path)
+                if (result && result.length > 0) {
+                  addLogEntry(`Audio exported to: ${result}`, 'success')
+                } else {
+                  addLogEntry('Export operation completed', 'success')
+                }
+              }
+
+              // Send the export result back to the server
+              const response = {
+                type: 'audio_export_response',
+                payload: result
+              }
+              ws.send(JSON.stringify(response))
+              console.log('Audio export response sent:', response)
+            })
+            break
+
           case 'error':
             console.log('Received error from server:', message.payload)
             addLogEntry(`Server error: ${message.payload}`, 'error')

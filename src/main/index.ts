@@ -189,6 +189,42 @@ app.whenReady().then(() => {
     return { success: true, message: 'Selected clips info request sent to Premiere Pro' }
   })
 
+  // Handler for exporting audio from Premiere Pro
+  ipcMain.handle(
+    'export-audio',
+    async (
+      _,
+      params: {
+        exportFolder: string
+        options: {
+          selectedAudioTracks: number[]
+          selectedRange: 'entire' | 'inout' | 'selected'
+        }
+      }
+    ) => {
+      if (!premiereSocket) {
+        throw new Error('Premiere Pro is not connected.')
+      }
+
+      const { exportFolder, options } = params
+
+      // Send export request to Premiere Pro
+      premiereSocket.send(
+        JSON.stringify({
+          type: 'request_audio_export',
+          payload: {
+            exportFolder,
+            selectedTracks: options.selectedAudioTracks,
+            selectedRange: options.selectedRange
+          }
+        })
+      )
+      console.log('Sent request_audio_export to Premiere Pro with params:', params)
+
+      return { success: true, message: 'Audio export request sent to Premiere Pro' }
+    }
+  )
+
   // Handler for running the clean-cut Python script (supports both file and Premiere Pro workflow)
   ipcMain.handle(
     'run-clean-cut',
@@ -265,6 +301,14 @@ app.whenReady().then(() => {
             console.log('Received selected clips info from Premiere:', parsedMessage.payload)
             if (mainWindow) {
               mainWindow.webContents.send('selected-clips-info-update', parsedMessage.payload)
+            }
+            break
+
+          case 'audio_export_response':
+            // Forward audio export result to renderer process
+            console.log('Received audio export result from Premiere:', parsedMessage.payload)
+            if (mainWindow) {
+              mainWindow.webContents.send('audio-export-result', parsedMessage.payload)
             }
             break
 

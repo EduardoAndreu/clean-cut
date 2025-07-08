@@ -7,6 +7,8 @@ import { ConnectionPrompt } from './ui/connection-prompt'
 import { RadioGroup, RadioGroupItem } from './ui/radio-group'
 import { Label } from './ui/label'
 import ActiveSequence from './ActiveSequence'
+import RemoveSilencesButton from './RemoveSilencesButton'
+import ExportAudioTestButton from './ExportAudioTestButton'
 
 interface RemoveSilencesProps {
   premiereConnected: boolean
@@ -18,7 +20,6 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
   const [padding, setPadding] = useState<number>(200)
   const [silenceManagement, setSilenceManagement] = useState<string>('remove')
   const [status, setStatus] = useState<string>('Waiting for Premiere Pro connection...')
-  const [isProcessing, setIsProcessing] = useState<boolean>(false)
   const [sequenceInfo, setSequenceInfo] = useState<{
     success: boolean
     sequenceName?: string
@@ -75,7 +76,6 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
 
   // Effect hook for cleanup and side effects
   useEffect(() => {
-    // Reset processing state when parameters change
     // Results are handled directly in Premiere Pro
   }, [silenceThreshold, minSilenceLen, padding])
 
@@ -257,70 +257,6 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
     return {
       startTimecode,
       endTimecode
-    }
-  }
-
-  const handleProcessFromPremiere = async () => {
-    if (!premiereConnected) {
-      setStatus(
-        'Premiere Pro is not connected. Please ensure the Clean-Cut extension is running in Premiere Pro.'
-      )
-      return
-    }
-
-    // Validate selections
-    if (selectedAudioTracks.length === 0) {
-      setStatus('Please select at least one audio track to process.')
-      return
-    }
-
-    // If "Selected clips" is chosen, we should check if clips are actually selected
-    if (selectedRange === 'selected') {
-      if (!sequenceInfo?.selectedClips || sequenceInfo.selectedClips.length === 0) {
-        setStatus(
-          'No clips are selected. Please select audio clips in your timeline first, or choose a different range option.'
-        )
-        return
-      }
-    }
-
-    setIsProcessing(true)
-    setStatus('Requesting audio from Premiere Pro...')
-
-    try {
-      await window.cleanCutAPI.invokeCleanCut(
-        '', // Empty file path for Premiere workflow
-        silenceThreshold,
-        minSilenceLen,
-        padding,
-        {
-          selectedAudioTracks,
-          selectedRange
-        }
-      )
-
-      const rangeText =
-        selectedRange === 'entire'
-          ? 'entire timeline'
-          : selectedRange === 'inout'
-            ? 'in/out points'
-            : 'selected clips'
-      const tracksText = selectedAudioTracks.map((t) => `A${t}`).join(', ')
-
-      setStatus(`Clean-cut request sent to Premiere Pro! Processing will happen automatically.
-Parameters used:
-- Range: ${rangeText}
-- Audio tracks: ${tracksText}
-- Threshold: ${silenceThreshold}dB
-- Min silence: ${minSilenceLen}ms  
-- Padding: ${padding}ms
-
-Check Premiere Pro for the results.`)
-    } catch (error) {
-      console.error('Premiere clean cut error:', error)
-      setStatus(`Error sending request to Premiere Pro: ${error}`)
-    } finally {
-      setIsProcessing(false)
     }
   }
 
@@ -609,18 +545,29 @@ Check Premiere Pro for the results.`)
             </RadioGroup>
           </div>
 
-          {/* Process Button */}
-          <div className="mb-5">
-            <Button
-              className="w-full px-6 py-3 text-base font-semibold"
-              size="lg"
-              onClick={handleProcessFromPremiere}
-              disabled={isProcessing || !premiereConnected}
-              variant={isProcessing || !premiereConnected ? 'secondary' : 'default'}
-            >
-              {isProcessing ? 'Processing...' : 'Process Audio'}
-            </Button>
-          </div>
+          {/* Remove Silences Button */}
+          <RemoveSilencesButton
+            silenceThreshold={silenceThreshold}
+            minSilenceLen={minSilenceLen}
+            padding={padding}
+            selectedAudioTracks={selectedAudioTracks}
+            selectedRange={selectedRange}
+            sequenceInfo={sequenceInfo}
+            premiereConnected={premiereConnected}
+            onStatusUpdate={setStatus}
+          />
+
+          {/* Export Audio Test Button
+          <ExportAudioTestButton
+            silenceThreshold={silenceThreshold}
+            minSilenceLen={minSilenceLen}
+            padding={padding}
+            selectedAudioTracks={selectedAudioTracks}
+            selectedRange={selectedRange}
+            sequenceInfo={sequenceInfo}
+            premiereConnected={premiereConnected}
+            onStatusUpdate={setStatus}
+          /> */}
         </div>
       </ScrollArea>
     </div>
