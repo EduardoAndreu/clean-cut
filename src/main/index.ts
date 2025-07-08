@@ -37,15 +37,17 @@ function safelyNotifyRenderer(channel: string, data: any) {
 // Function to process audio file using Python script
 async function processAudioFile(filePath: string, params: CleanCutArgs): Promise<number[][]> {
   const { threshold, minSilenceLen, padding } = params
-  const scriptPath = join(__dirname, '../../python-backend/silence_detector.py')
+  const scriptPath = join(__dirname, '../../python-backend/silence_detector_energy.py')
 
-  console.log('=== PYTHON EXECUTION ===')
+  console.log('=== PYTHON EXECUTION (Energy-Based Approach) ===')
   console.log('Script path:', scriptPath)
   console.log('File path:', filePath)
   console.log('Parameters:', params)
 
   return new Promise((resolve, reject) => {
-    const pythonProcess = spawn('python', [
+    // Use Python from virtual environment
+    const pythonPath = join(__dirname, '../../python-backend/.venv/bin/python')
+    const pythonProcess = spawn(pythonPath, [
       scriptPath,
       filePath,
       threshold.toString(),
@@ -258,6 +260,72 @@ app.whenReady().then(() => {
     }
   )
 
+  // Handler for analyzing audio levels
+  ipcMain.handle('analyze-audio', async (_, filePath: string) => {
+    try {
+      const pythonPath = join(__dirname, '../../python-backend/.venv/bin/python')
+      const scriptPath = join(__dirname, '../../python-backend/audio_analyzer.py')
+
+      console.log('=== AUDIO ANALYSIS ===')
+      console.log('Script path:', scriptPath)
+      console.log('File path:', filePath)
+
+      return new Promise((resolve, reject) => {
+        const pythonProcess = spawn(pythonPath, [scriptPath, filePath])
+
+        let stdout = ''
+        let stderr = ''
+
+        pythonProcess.stdout.on('data', (data) => {
+          stdout += data.toString()
+        })
+
+        pythonProcess.stderr.on('data', (data) => {
+          stderr += data.toString()
+        })
+
+        pythonProcess.on('close', (code) => {
+          console.log('Audio analysis process closed with code:', code)
+
+          if (code === 0) {
+            try {
+              // Extract JSON from stdout (between JSON_OUTPUT_START and JSON_OUTPUT_END)
+              const startMarker = 'JSON_OUTPUT_START'
+              const endMarker = 'JSON_OUTPUT_END'
+              const startIndex = stdout.indexOf(startMarker)
+              const endIndex = stdout.indexOf(endMarker)
+
+              if (startIndex !== -1 && endIndex !== -1) {
+                const jsonData = stdout.substring(startIndex + startMarker.length, endIndex).trim()
+                const analysisData = JSON.parse(jsonData)
+                console.log('Audio analysis completed successfully')
+                resolve({ success: true, data: analysisData })
+              } else {
+                throw new Error('Could not find JSON output markers in analysis result')
+              }
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error)
+              console.error('Failed to parse analysis output:', errorMessage)
+              reject(new Error(`Failed to parse analysis output: ${errorMessage}`))
+            }
+          } else {
+            console.error('Audio analysis failed:', stderr)
+            reject(new Error(`Audio analysis failed: ${stderr}`))
+          }
+        })
+
+        pythonProcess.on('error', (error) => {
+          console.error('Failed to start audio analysis process:', error.message)
+          reject(new Error(`Failed to start audio analysis process: ${error.message}`))
+        })
+      })
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error('Audio analysis error:', errorMessage)
+      return { success: false, error: errorMessage }
+    }
+  })
+
   // Handler for exporting audio and processing with silence detection
   ipcMain.handle(
     'export-audio-and-process',
@@ -427,12 +495,16 @@ app.whenReady().then(() => {
                 console.log('Processing exported audio with parameters:', currentProcessingParams)
 
                 // Process the exported audio file
-                const scriptPath = join(__dirname, '../../python-backend/silence_detector.py')
-                console.log('=== PYTHON EXECUTION FROM EXPORT-AND-PROCESS ===')
+                const scriptPath = join(
+                  __dirname,
+                  '../../python-backend/silence_detector_energy.py'
+                )
+                console.log('=== PYTHON EXECUTION FROM EXPORT-AND-PROCESS (Energy-Based) ===')
                 console.log('Script path:', scriptPath)
                 console.log('File path:', exportResult.outputPath)
 
-                const pythonProcess = spawn('python', [
+                const pythonPath = join(__dirname, '../../python-backend/.venv/bin/python')
+                const pythonProcess = spawn(pythonPath, [
                   scriptPath,
                   exportResult.outputPath,
                   threshold.toString(),
@@ -561,13 +633,14 @@ app.whenReady().then(() => {
               console.log('Using parameters:', currentProcessingParams)
 
               // Reuse the existing Python processing logic
-              const scriptPath = join(__dirname, '../../python-backend/silence_detector.py')
+              const scriptPath = join(__dirname, '../../python-backend/silence_detector_energy.py')
 
-              console.log('=== PYTHON EXECUTION FROM WEBSOCKET ===')
+              console.log('=== PYTHON EXECUTION FROM WEBSOCKET (Energy-Based) ===')
               console.log('Script path:', scriptPath)
               console.log('File path received:', filePath)
 
-              const pythonProcess = spawn('python', [
+              const pythonPath = join(__dirname, '../../python-backend/.venv/bin/python')
+              const pythonProcess = spawn(pythonPath, [
                 scriptPath,
                 filePath,
                 threshold.toString(),

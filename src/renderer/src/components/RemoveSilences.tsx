@@ -9,6 +9,7 @@ import { Label } from './ui/label'
 import ActiveSequence from './ActiveSequence'
 import RemoveSilencesButton from './RemoveSilencesButton'
 import ExportAudioTestButton from './ExportAudioTestButton'
+import AudioAnalysisButton from './AudioAnalysisButton'
 
 interface RemoveSilencesProps {
   premiereConnected: boolean
@@ -443,10 +444,21 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
             <div className="block text-sm font-semibold text-black mb-4">Settings</div>
 
             {/* Silence Threshold Slider */}
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-black mb-2">
-                Silence Threshold: {silenceThreshold} dB
-              </label>
+            <div className="mb-8">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-semibold text-black">
+                  Silence Threshold: {silenceThreshold} dB
+                </label>
+                <AudioAnalysisButton
+                  selectedAudioTracks={selectedAudioTracks}
+                  selectedRange={selectedRange}
+                  sequenceInfo={sequenceInfo}
+                  premiereConnected={premiereConnected}
+                  onThresholdSuggestion={(threshold) => setSilenceThreshold(threshold)}
+                  onStatusUpdate={setStatus}
+                  className="flex-shrink-0"
+                />
+              </div>
               <Slider
                 value={[silenceThreshold]}
                 onValueChange={(value) => setSilenceThreshold(value[0])}

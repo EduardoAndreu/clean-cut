@@ -22,7 +22,7 @@ interface CleanCutAPI {
       selectedAudioTracks: number[]
       selectedRange: 'entire' | 'inout' | 'selected'
     }
-  ) => Promise<{ success: boolean; message: string; outputPath?: string }>
+  ) => Promise<{ success: boolean; message: string; outputPath?: string; error?: string }>
   exportAudioAndProcess: (
     exportFolder: string,
     silenceThreshold: number,
@@ -33,6 +33,7 @@ interface CleanCutAPI {
       selectedRange: 'entire' | 'inout' | 'selected'
     }
   ) => Promise<{ success: boolean; message: string }>
+  analyzeAudio: (filePath: string) => Promise<{ success: boolean; data?: any; error?: string }>
   showOpenDialog: () => Promise<FileDialogResult | null>
   requestSequenceInfo: () => Promise<{ success: boolean; message: string }>
   requestSelectedClipsInfo: () => Promise<{ success: boolean; message: string }>

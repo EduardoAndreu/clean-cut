@@ -41,6 +41,7 @@ const cleanCutAPI = {
       padding,
       options
     }),
+  analyzeAudio: (filePath: string) => ipcRenderer.invoke('analyze-audio', filePath),
   showOpenDialog: () => ipcRenderer.invoke('show-open-dialog'),
   requestSequenceInfo: () => ipcRenderer.invoke('request-sequence-info'),
   requestSelectedClipsInfo: () => ipcRenderer.invoke('request-selected-clips-info')
