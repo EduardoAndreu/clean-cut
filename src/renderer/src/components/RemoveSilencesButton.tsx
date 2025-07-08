@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from './ui/button'
 
 interface SequenceInfo {
@@ -78,6 +78,42 @@ function RemoveSilencesButton({
 }: RemoveSilencesButtonProps): React.JSX.Element {
   const [isProcessing, setIsProcessing] = useState<boolean>(false)
 
+  // Hardcoded export location for processing
+  const EXPORT_LOCATION = '/Users/ea/Downloads'
+
+  // Listen for silence processing results
+  useEffect(() => {
+    const handleSilenceProcessingResult = (_event: any, data: any) => {
+      console.log('Received silence processing result:', data)
+
+      if (data.success) {
+        const successMessage = `Silence processing completed!
+${data.message}
+Processing completed successfully.`
+        onStatusUpdate(successMessage)
+        onSuccess?.(successMessage)
+      } else {
+        const errorMessage = `Silence processing failed: ${data.message}`
+        onStatusUpdate(errorMessage)
+        onError?.(errorMessage)
+      }
+
+      setIsProcessing(false)
+    }
+
+    // Add IPC listeners
+    if (window.electron && window.electron.ipcRenderer) {
+      window.electron.ipcRenderer.on('silence-processing-result', handleSilenceProcessingResult)
+    }
+
+    return () => {
+      // Cleanup listeners on unmount
+      if (window.electron && window.electron.ipcRenderer) {
+        window.electron.ipcRenderer.removeAllListeners('silence-processing-result')
+      }
+    }
+  }, [onStatusUpdate, onError, onSuccess])
+
   const handleProcessFromPremiere = async () => {
     if (!premiereConnected) {
       const errorMsg =
@@ -107,11 +143,11 @@ function RemoveSilencesButton({
     }
 
     setIsProcessing(true)
-    onStatusUpdate('Requesting audio from Premiere Pro...')
+    onStatusUpdate('Exporting audio from Premiere Pro...')
 
     try {
-      await window.cleanCutAPI.invokeCleanCut(
-        '', // Empty file path for Premiere workflow
+      await window.cleanCutAPI.exportAudioAndProcess(
+        EXPORT_LOCATION,
         silenceThreshold,
         minSilenceLen,
         padding,
@@ -129,24 +165,23 @@ function RemoveSilencesButton({
             : 'selected clips'
       const tracksText = selectedAudioTracks.map((t) => `A${t}`).join(', ')
 
-      const successMessage = `Clean-cut request sent to Premiere Pro! Processing will happen automatically.
-Parameters used:
+      onStatusUpdate(`Export and process request sent to Premiere Pro!
+Parameters:
+- Export location: ${EXPORT_LOCATION}
 - Range: ${rangeText}
 - Audio tracks: ${tracksText}
 - Threshold: ${silenceThreshold}dB
 - Min silence: ${minSilenceLen}ms  
 - Padding: ${padding}ms
 
-Check Premiere Pro for the results.`
-
-      onStatusUpdate(successMessage)
-      onSuccess?.(successMessage)
+Step 1: Exporting audio...
+Step 2: Will analyze for silences...
+Step 3: Will cut at silence locations...`)
     } catch (error) {
-      console.error('Premiere clean cut error:', error)
-      const errorMsg = `Error sending request to Premiere Pro: ${error}`
+      console.error('Export and process error:', error)
+      const errorMsg = `Error sending export and process request: ${error}`
       onStatusUpdate(errorMsg)
       onError?.(errorMsg)
-    } finally {
       setIsProcessing(false)
     }
   }

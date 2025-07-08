@@ -24,6 +24,23 @@ const cleanCutAPI = {
       selectedRange: 'entire' | 'inout' | 'selected'
     }
   ) => ipcRenderer.invoke('export-audio', { exportFolder, options }),
+  exportAudioAndProcess: (
+    exportFolder: string,
+    silenceThreshold: number,
+    minSilenceLen: number,
+    padding: number,
+    options: {
+      selectedAudioTracks: number[]
+      selectedRange: 'entire' | 'inout' | 'selected'
+    }
+  ) =>
+    ipcRenderer.invoke('export-audio-and-process', {
+      exportFolder,
+      silenceThreshold,
+      minSilenceLen,
+      padding,
+      options
+    }),
   showOpenDialog: () => ipcRenderer.invoke('show-open-dialog'),
   requestSequenceInfo: () => ipcRenderer.invoke('request-sequence-info'),
   requestSelectedClipsInfo: () => ipcRenderer.invoke('request-selected-clips-info')

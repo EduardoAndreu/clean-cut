@@ -23,6 +23,17 @@ let mainWindow: BrowserWindow | null = null
 // Store processing parameters for WebSocket workflow
 let currentProcessingParams: CleanCutArgs | null = null
 
+// Helper function to safely send messages to renderer
+function safelyNotifyRenderer(channel: string, data: any) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      mainWindow.webContents.send(channel, data)
+    } catch (error) {
+      console.error(`Failed to send message to renderer on channel ${channel}:`, error)
+    }
+  }
+}
+
 // Function to process audio file using Python script
 async function processAudioFile(filePath: string, params: CleanCutArgs): Promise<number[][]> {
   const { threshold, minSilenceLen, padding } = params
@@ -107,6 +118,18 @@ function createWindow(): void {
     mainWindow!.show()
   })
 
+  // Cleanup when window is closed
+  mainWindow!.on('closed', () => {
+    mainWindow = null
+    // Close WebSocket connection if it exists
+    if (premiereSocket) {
+      premiereSocket.close()
+      premiereSocket = null
+    }
+    // Clear any pending processing parameters
+    currentProcessingParams = null
+  })
+
   mainWindow!.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
@@ -170,7 +193,12 @@ app.whenReady().then(() => {
     }
 
     // Send request to Premiere Pro to get sequence info
-    premiereSocket.send(JSON.stringify({ type: 'request_sequence_info' }))
+    try {
+      premiereSocket.send(JSON.stringify({ type: 'request_sequence_info' }))
+    } catch (error) {
+      console.error('Failed to send sequence info request to Premiere Pro:', error)
+      throw new Error('Failed to communicate with Premiere Pro')
+    }
     console.log('Sent request_sequence_info to Premiere Pro')
 
     return { success: true, message: 'Sequence info request sent to Premiere Pro' }
@@ -183,7 +211,12 @@ app.whenReady().then(() => {
     }
 
     // Send request to Premiere Pro to get selected clips info
-    premiereSocket.send(JSON.stringify({ type: 'request_selected_clips_info' }))
+    try {
+      premiereSocket.send(JSON.stringify({ type: 'request_selected_clips_info' }))
+    } catch (error) {
+      console.error('Failed to send selected clips info request to Premiere Pro:', error)
+      throw new Error('Failed to communicate with Premiere Pro')
+    }
     console.log('Sent request_selected_clips_info to Premiere Pro')
 
     return { success: true, message: 'Selected clips info request sent to Premiere Pro' }
@@ -225,6 +258,52 @@ app.whenReady().then(() => {
     }
   )
 
+  // Handler for exporting audio and processing with silence detection
+  ipcMain.handle(
+    'export-audio-and-process',
+    async (
+      _,
+      params: {
+        exportFolder: string
+        silenceThreshold: number
+        minSilenceLen: number
+        padding: number
+        options: {
+          selectedAudioTracks: number[]
+          selectedRange: 'entire' | 'inout' | 'selected'
+        }
+      }
+    ) => {
+      if (!premiereSocket) {
+        throw new Error('Premiere Pro is not connected.')
+      }
+
+      const { exportFolder, silenceThreshold, minSilenceLen, padding, options } = params
+
+      // Store processing parameters for when audio export response comes back
+      currentProcessingParams = { threshold: silenceThreshold, minSilenceLen, padding, options }
+      console.log(
+        'Stored processing parameters for export-and-process workflow:',
+        currentProcessingParams
+      )
+
+      // Send export request to Premiere Pro
+      premiereSocket.send(
+        JSON.stringify({
+          type: 'request_audio_export_and_process',
+          payload: {
+            exportFolder,
+            selectedTracks: options.selectedAudioTracks,
+            selectedRange: options.selectedRange
+          }
+        })
+      )
+      console.log('Sent request_audio_export_and_process to Premiere Pro with params:', params)
+
+      return { success: true, message: 'Export and process request sent to Premiere Pro' }
+    }
+  )
+
   // Handler for running the clean-cut Python script (supports both file and Premiere Pro workflow)
   ipcMain.handle(
     'run-clean-cut',
@@ -256,12 +335,17 @@ app.whenReady().then(() => {
       console.log('Stored processing parameters for Premiere workflow:', currentProcessingParams)
 
       // Send request to Premiere Pro to get the audio path with processing options
-      premiereSocket.send(
-        JSON.stringify({
-          type: 'request_audio_path',
-          options: options || {}
-        })
-      )
+      try {
+        premiereSocket.send(
+          JSON.stringify({
+            type: 'request_audio_path',
+            options: options || {}
+          })
+        )
+      } catch (error) {
+        console.error('Failed to send message to Premiere Pro:', error)
+        throw new Error('Failed to communicate with Premiere Pro')
+      }
       console.log('Sent request_audio_path to Premiere Pro with options:', options)
 
       // Return success - the actual processing will happen via WebSocket events
@@ -272,14 +356,15 @@ app.whenReady().then(() => {
   // Create WebSocket server for Premiere Pro communication
   const wss = new WebSocketServer({ port: 8085 })
 
+  // Store server reference for cleanup
+  let webSocketServer = wss
+
   wss.on('connection', (ws: WebSocket) => {
     console.log('Premiere Pro connected via WebSocket')
     premiereSocket = ws
 
     // Notify renderer process that Premiere is connected
-    if (mainWindow) {
-      mainWindow.webContents.send('premiere-status-update', { connected: true })
-    }
+    safelyNotifyRenderer('premiere-status-update', { connected: true })
 
     ws.on('message', async (message: Buffer) => {
       try {
@@ -288,27 +373,176 @@ app.whenReady().then(() => {
         const parsedMessage = JSON.parse(messageString)
 
         switch (parsedMessage.type) {
+          case 'handshake':
+            // Handle initial handshake from Premiere Pro extension
+            console.log('Received handshake from Premiere Pro:', parsedMessage.payload)
+            // Send handshake acknowledgment back
+            if (premiereSocket) {
+              try {
+                premiereSocket.send(
+                  JSON.stringify({
+                    type: 'handshake_ack',
+                    payload: 'clean-cut-app'
+                  })
+                )
+                console.log('Sent handshake acknowledgment to Premiere Pro')
+              } catch (error) {
+                console.error('Failed to send handshake acknowledgment:', error)
+              }
+            }
+            break
+
           case 'sequence_info_response':
             // Forward sequence info to renderer process
             console.log('Received sequence info from Premiere:', parsedMessage.payload)
-            if (mainWindow) {
-              mainWindow.webContents.send('sequence-info-update', parsedMessage.payload)
-            }
+            safelyNotifyRenderer('sequence-info-update', parsedMessage.payload)
             break
 
           case 'selected_clips_info_response':
             // Forward selected clips info to renderer process
             console.log('Received selected clips info from Premiere:', parsedMessage.payload)
-            if (mainWindow) {
-              mainWindow.webContents.send('selected-clips-info-update', parsedMessage.payload)
-            }
+            safelyNotifyRenderer('selected-clips-info-update', parsedMessage.payload)
             break
 
           case 'audio_export_response':
             // Forward audio export result to renderer process
             console.log('Received audio export result from Premiere:', parsedMessage.payload)
-            if (mainWindow) {
-              mainWindow.webContents.send('audio-export-result', parsedMessage.payload)
+            safelyNotifyRenderer('audio-export-result', parsedMessage.payload)
+            break
+
+          case 'audio_export_and_process_response':
+            // Handle export response for the export-and-process workflow
+            console.log('Received audio export result for processing:', parsedMessage.payload)
+
+            try {
+              const exportResult = JSON.parse(parsedMessage.payload)
+
+              if (exportResult.success && exportResult.outputPath) {
+                // Use stored parameters to process the exported audio
+                if (!currentProcessingParams) {
+                  throw new Error('No processing parameters stored')
+                }
+
+                const { threshold, minSilenceLen, padding } = currentProcessingParams
+                console.log('Processing exported audio with parameters:', currentProcessingParams)
+
+                // Process the exported audio file
+                const scriptPath = join(__dirname, '../../python-backend/silence_detector.py')
+                console.log('=== PYTHON EXECUTION FROM EXPORT-AND-PROCESS ===')
+                console.log('Script path:', scriptPath)
+                console.log('File path:', exportResult.outputPath)
+
+                const pythonProcess = spawn('python', [
+                  scriptPath,
+                  exportResult.outputPath,
+                  threshold.toString(),
+                  minSilenceLen.toString(),
+                  padding.toString()
+                ])
+
+                let stdout = ''
+                let stderr = ''
+
+                pythonProcess.stdout.on('data', (data) => {
+                  const chunk = data.toString()
+                  console.log('Python stdout chunk:', chunk)
+                  stdout += chunk
+                })
+
+                pythonProcess.stderr.on('data', (data) => {
+                  const chunk = data.toString()
+                  console.log('Python stderr chunk:', chunk)
+                  stderr += chunk
+                })
+
+                pythonProcess.on('close', (code) => {
+                  console.log('Python process closed with code:', code)
+                  console.log('Full stdout:', stdout)
+                  console.log('Full stderr:', stderr)
+
+                  if (code === 0) {
+                    try {
+                      // Parse the JSON output from stdout
+                      const silenceRanges = JSON.parse(stdout.trim())
+                      console.log('Parsed silence ranges:', silenceRanges)
+                      console.log('Silence ranges length:', silenceRanges.length)
+
+                      // Convert to cut format expected by Premiere
+                      const cutCommands = silenceRanges.map((range: number[]) => ({
+                        start: range[0],
+                        end: range[1]
+                      }))
+
+                      // Send cut commands to Premiere
+                      if (premiereSocket) {
+                        premiereSocket.send(
+                          JSON.stringify({
+                            type: 'request_cuts',
+                            payload: cutCommands
+                          })
+                        )
+                        console.log('Sent cut requests to Premiere:', cutCommands)
+
+                        // Notify UI of success
+                        safelyNotifyRenderer('silence-processing-result', {
+                          success: true,
+                          message: `Found ${silenceRanges.length} silence ranges. Cuts sent to Premiere Pro.`,
+                          silenceCount: silenceRanges.length
+                        })
+                      }
+
+                      // Clear stored parameters after successful processing
+                      currentProcessingParams = null
+                    } catch (error) {
+                      const errorMessage = error instanceof Error ? error.message : String(error)
+                      console.error('JSON parse error:', errorMessage)
+
+                      // Notify UI of error
+                      safelyNotifyRenderer('silence-processing-result', {
+                        success: false,
+                        message: `Failed to parse silence detection results: ${errorMessage}`
+                      })
+
+                      currentProcessingParams = null
+                    }
+                  } else {
+                    console.error('Python script failed:', stderr)
+
+                    // Notify UI of error
+                    safelyNotifyRenderer('silence-processing-result', {
+                      success: false,
+                      message: `Python script failed: ${stderr}`
+                    })
+
+                    currentProcessingParams = null
+                  }
+                })
+
+                pythonProcess.on('error', (error) => {
+                  console.error('Failed to start Python process:', error.message)
+
+                  // Notify UI of error
+                  safelyNotifyRenderer('silence-processing-result', {
+                    success: false,
+                    message: `Failed to start Python process: ${error.message}`
+                  })
+
+                  currentProcessingParams = null
+                })
+              } else {
+                throw new Error(`Export failed: ${exportResult.error || 'Unknown error'}`)
+              }
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error)
+              console.error('Error processing export result:', errorMessage)
+
+              // Notify UI of error
+              safelyNotifyRenderer('silence-processing-result', {
+                success: false,
+                message: `Error processing export result: ${errorMessage}`
+              })
+
+              currentProcessingParams = null
             }
             break
 
@@ -451,6 +685,11 @@ app.whenReady().then(() => {
             }
             break
 
+          case 'cuts_response':
+            // Handle response from Premiere Pro after cutting operations
+            console.log('Received cuts response from Premiere:', parsedMessage.payload)
+            break
+
           default:
             console.log('Unknown message type:', parsedMessage.type)
             break
@@ -466,9 +705,7 @@ app.whenReady().then(() => {
       premiereSocket = null
 
       // Notify renderer process that Premiere is disconnected
-      if (mainWindow) {
-        mainWindow.webContents.send('premiere-status-update', { connected: false })
-      }
+      safelyNotifyRenderer('premiere-status-update', { connected: false })
     })
 
     ws.on('error', (error) => {

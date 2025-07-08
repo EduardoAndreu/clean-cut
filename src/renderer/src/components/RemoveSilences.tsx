@@ -557,7 +557,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
             onStatusUpdate={setStatus}
           />
 
-          {/* Export Audio Test Button
+          {/* Export Audio Test Button */}
           <ExportAudioTestButton
             silenceThreshold={silenceThreshold}
             minSilenceLen={minSilenceLen}
@@ -567,7 +567,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
             sequenceInfo={sequenceInfo}
             premiereConnected={premiereConnected}
             onStatusUpdate={setStatus}
-          /> */}
+          />
         </div>
       </ScrollArea>
     </div>

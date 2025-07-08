@@ -485,7 +485,7 @@ function connect() {
       }
       ws.send(JSON.stringify(handshakeMessage))
       console.log('Handshake message sent:', handshakeMessage)
-      addLogEntry('Handshake completed', 'success')
+      addLogEntry('Handshake sent to server', 'info')
 
       // Automatically get sequence info when connected
       setTimeout(() => {
@@ -501,6 +501,11 @@ function connect() {
 
         // Process message based on type
         switch (message.type) {
+          case 'handshake_ack':
+            console.log('Received handshake acknowledgment from server:', message.payload)
+            addLogEntry('Handshake acknowledged by server', 'success')
+            break
+
           case 'request_audio_path':
             console.log('Received request for audio path')
             addLogEntry('Received audio export request', 'info')
@@ -534,30 +539,95 @@ function connect() {
             console.log('Received request to perform cuts:', message.payload)
             addLogEntry(`Performing ${message.payload.length} cuts...`, 'info')
 
-            // Call ExtendScript function to perform cuts
-            const cutsData = JSON.stringify(message.payload)
-            cs.evalScript(`performCuts('${cutsData}')`, function (result) {
-              console.log('Cuts result:', result)
+            // Process cuts one by one using the simpler cutAtTime function
+            const silenceRanges = message.payload
+            const totalRanges = silenceRanges.length
+            let totalCutsPerformed = 0
+            let errors = []
 
-              try {
-                const resultData = JSON.parse(result)
-                if (resultData.success) {
-                  addLogEntry(`Successfully performed ${resultData.cutsPerformed} cuts`, 'success')
-                } else {
-                  addLogEntry(`Cut operation failed: ${resultData.error}`, 'error')
-                }
-              } catch (e) {
-                addLogEntry('Cuts completed', 'success')
-              }
-
-              // Send success message back to server
-              const response = {
-                type: 'cuts_response',
-                payload: 'success'
-              }
-              ws.send(JSON.stringify(response))
-              console.log('Cuts response sent:', response)
+            // Create a flat array of all cut times (start and end for each range)
+            const cutTimes = []
+            silenceRanges.forEach((range, index) => {
+              cutTimes.push({ time: range.start, type: 'start', rangeIndex: index })
+              cutTimes.push({ time: range.end, type: 'end', rangeIndex: index })
             })
+
+            // Sort cut times chronologically
+            cutTimes.sort((a, b) => a.time - b.time)
+
+            console.log(
+              `Processing ${cutTimes.length} individual cuts for ${totalRanges} silence ranges`
+            )
+
+            let currentCutIndex = 0
+
+            function processNextCut() {
+              if (currentCutIndex >= cutTimes.length) {
+                // All cuts completed
+                const finalMessage =
+                  errors.length === 0
+                    ? `Successfully performed ${totalCutsPerformed} cuts for ${totalRanges} silence ranges`
+                    : `Completed with ${totalCutsPerformed} cuts performed and ${errors.length} errors`
+
+                addLogEntry(finalMessage, errors.length === 0 ? 'success' : 'warning')
+
+                if (errors.length > 0) {
+                  console.log('Cut errors:', errors)
+                }
+
+                // Send success message back to server
+                const response = {
+                  type: 'cuts_response',
+                  payload: 'success'
+                }
+                ws.send(JSON.stringify(response))
+                console.log('Cuts response sent:', response)
+                return
+              }
+
+              const cutInfo = cutTimes[currentCutIndex]
+              const cutTime = cutInfo.time
+
+              console.log(
+                `Processing cut ${currentCutIndex + 1}/${cutTimes.length}: ${cutTime}s (${cutInfo.type} of range ${cutInfo.rangeIndex + 1})`
+              )
+
+              const cutScriptCall = `cutAtTime(${cutTime})`
+
+              cs.evalScript(cutScriptCall, function (result) {
+                console.log(`Cut ${currentCutIndex + 1} result:`, result)
+
+                try {
+                  const resultData = JSON.parse(result)
+                  if (resultData.success) {
+                    totalCutsPerformed += resultData.cutsPerformed || 0
+                    if (
+                      (currentCutIndex + 1) % 10 === 0 ||
+                      currentCutIndex === cutTimes.length - 1
+                    ) {
+                      addLogEntry(
+                        `Processed ${currentCutIndex + 1}/${cutTimes.length} cuts...`,
+                        'info'
+                      )
+                    }
+                  } else {
+                    errors.push(`Cut ${currentCutIndex + 1} (${cutTime}s): ${resultData.error}`)
+                    addLogEntry(`Cut ${currentCutIndex + 1} failed: ${resultData.error}`, 'error')
+                  }
+                } catch (e) {
+                  errors.push(`Cut ${currentCutIndex + 1} (${cutTime}s): Parse error - ${result}`)
+                  addLogEntry(`Cut ${currentCutIndex + 1} failed: ${result}`, 'error')
+                }
+
+                currentCutIndex++
+
+                // Process next cut with a small delay to avoid overwhelming Premiere
+                setTimeout(processNextCut, 50)
+              })
+            }
+
+            // Start processing cuts
+            processNextCut()
             break
 
           case 'request_sequence_info':
@@ -668,6 +738,58 @@ function connect() {
               }
               ws.send(JSON.stringify(response))
               console.log('Audio export response sent:', response)
+            })
+            break
+
+          case 'request_audio_export_and_process':
+            console.log('Received request for audio export and process:', message.payload)
+            addLogEntry('Received audio export and process request', 'info')
+
+            const {
+              exportFolder: exportFolderProcess,
+              selectedTracks: selectedTracksProcess,
+              selectedRange: selectedRangeProcess
+            } = message.payload
+            const selectedTracksJsonProcess = JSON.stringify(selectedTracksProcess)
+
+            addLogEntry(
+              `Exporting audio for processing: ${selectedTracksProcess.length} tracks, range: ${selectedRangeProcess}`,
+              'info'
+            )
+
+            // Call ExtendScript function to export sequence audio with specific parameters
+            const scriptCallProcess = `exportSequenceAudio('${exportFolderProcess}', '${selectedTracksJsonProcess}', '${selectedRangeProcess}')`
+            addLogEntry(`ExtendScript call: ${scriptCallProcess}`, 'info')
+
+            cs.evalScript(scriptCallProcess, function (result) {
+              console.log('Audio export result for processing:', result)
+
+              try {
+                const resultData = JSON.parse(result)
+                if (resultData.success) {
+                  addLogEntry(`Audio exported for processing: ${resultData.outputPath}`, 'success')
+                  if (resultData.presetUsed) {
+                    addLogEntry(`Preset used: ${resultData.presetUsed}`, 'info')
+                  }
+                } else {
+                  addLogEntry(`Export failed: ${resultData.error}`, 'error')
+                }
+              } catch (e) {
+                // Handle non-JSON response (might be just the file path)
+                if (result && result.length > 0) {
+                  addLogEntry(`Audio exported for processing to: ${result}`, 'success')
+                } else {
+                  addLogEntry('Export operation completed', 'success')
+                }
+              }
+
+              // Send the export result back to the server for processing
+              const response = {
+                type: 'audio_export_and_process_response',
+                payload: result
+              }
+              ws.send(JSON.stringify(response))
+              console.log('Audio export and process response sent:', response)
             })
             break
 
