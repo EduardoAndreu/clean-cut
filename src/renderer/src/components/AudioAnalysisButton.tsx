@@ -24,12 +24,24 @@ interface AudioAnalysisResult {
     }
   }
   suggestions: {
-    conservative: { threshold: number; description: string }
-    moderate: { threshold: number; description: string }
-    aggressive: { threshold: number; description: string }
-    custom_percentile: { threshold: number; description: string }
+    conservative?: { threshold: number; description: string }
+    moderate?: { threshold: number; description: string }
+    aggressive?: { threshold: number; description: string }
+    custom_percentile?: { threshold: number; description: string }
+    vad_recommended?: { threshold: number; description: string }
   }
   impact_analysis: Record<string, number>
+  analysis_method?: string
+  vad_results?: {
+    speech_segments: Array<{ start: number; end: number }>
+    silence_segments: Array<{ start: number; end: number; duration: number }>
+    speech_duration: number
+    silence_duration: number
+    speech_percentage: number
+    confidence: string
+  }
+  vad_segments_detected?: number
+  removable_silence_duration?: number
 }
 
 interface AudioAnalysisButtonProps {

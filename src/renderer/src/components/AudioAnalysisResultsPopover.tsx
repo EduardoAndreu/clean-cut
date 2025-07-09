@@ -25,12 +25,24 @@ interface AudioAnalysisResult {
     }
   }
   suggestions: {
-    conservative: { threshold: number; description: string }
-    moderate: { threshold: number; description: string }
-    aggressive: { threshold: number; description: string }
-    custom_percentile: { threshold: number; description: string }
+    conservative?: { threshold: number; description: string }
+    moderate?: { threshold: number; description: string }
+    aggressive?: { threshold: number; description: string }
+    custom_percentile?: { threshold: number; description: string }
+    vad_recommended?: { threshold: number; description: string }
   }
   impact_analysis: Record<string, number>
+  analysis_method?: string
+  vad_results?: {
+    speech_segments: Array<{ start: number; end: number }>
+    silence_segments: Array<{ start: number; end: number; duration: number }>
+    speech_duration: number
+    silence_duration: number
+    speech_percentage: number
+    confidence: string
+  }
+  vad_segments_detected?: number
+  removable_silence_duration?: number
 }
 
 interface AudioAnalysisResultsPopoverProps {
@@ -47,8 +59,8 @@ function AudioAnalysisResultsPopover({
   className
 }: AudioAnalysisResultsPopoverProps): React.JSX.Element {
   const handleApplyThreshold = (threshold: number, description: string) => {
-    onThresholdSuggestion(threshold)
-    onStatusUpdate(`Applied ${description}: ${threshold.toFixed(1)}dB`)
+    onThresholdSuggestion(Math.round(threshold))
+    onStatusUpdate(`Applied ${description}: ${Math.round(threshold)}dB`)
   }
 
   return (
@@ -60,19 +72,40 @@ function AudioAnalysisResultsPopover({
       </PopoverTrigger>
       <PopoverContent className="w-80" align="start">
         <div>
-          <h3 className="text-sm font-semibold text-black mb-3">Audio Analysis</h3>
+          <h3 className="text-sm font-semibold text-black mb-3">
+            {analysisResult?.analysis_method === 'vad' ? 'AI Speech Analysis' : 'Audio Analysis'}
+          </h3>
 
           {!analysisResult ? (
             <div className="text-center py-8">
               <Info className="h-8 w-8 mx-auto text-gray-400 mb-3" />
               <p className="text-sm text-gray-600 mb-2">No analysis results yet</p>
               <p className="text-xs text-gray-500">
-                Click "Analyze" to get detailed audio statistics and threshold suggestions
+                Click "Analyze" to detect speech vs silence using AI
               </p>
             </div>
           ) : (
             <ScrollArea className="h-64 w-full">
               <div className="space-y-3 text-xs">
+                {/* VAD Results (if available) */}
+                {analysisResult.vad_results && (
+                  <div>
+                    <h4 className="font-semibold text-black mb-1">Speech Detection</h4>
+                    <div className="text-gray-600 space-y-1">
+                      <div>Method: AI Voice Activity Detection</div>
+                      <div>Speech Segments: {analysisResult.vad_segments_detected}</div>
+                      <div>
+                        Speech: {analysisResult.vad_results.speech_percentage.toFixed(1)}% of audio
+                      </div>
+                      <div>
+                        Removable Silence:{' '}
+                        {analysisResult.removable_silence_duration?.toFixed(1) || '0'}s
+                      </div>
+                      <div>Confidence: {analysisResult.vad_results.confidence}</div>
+                    </div>
+                  </div>
+                )}
+
                 {/* File Info */}
                 <div>
                   <h4 className="font-semibold text-black mb-1">File Information</h4>
@@ -89,12 +122,12 @@ function AudioAnalysisResultsPopover({
                   <h4 className="font-semibold text-black mb-1">Level Statistics</h4>
                   <div className="text-gray-600 space-y-1">
                     <div>
-                      Range: {analysisResult.statistics.min_db.toFixed(1)} to{' '}
-                      {analysisResult.statistics.max_db.toFixed(1)} dB
+                      Range: {Math.round(analysisResult.statistics.min_db)} to{' '}
+                      {Math.round(analysisResult.statistics.max_db)} dB
                     </div>
-                    <div>Mean: {analysisResult.statistics.mean_db.toFixed(1)} dB</div>
-                    <div>Median: {analysisResult.statistics.median_db.toFixed(1)} dB</div>
-                    <div>Std Dev: {analysisResult.statistics.std_db.toFixed(1)} dB</div>
+                    <div>Mean: {Math.round(analysisResult.statistics.mean_db)} dB</div>
+                    <div>Median: {Math.round(analysisResult.statistics.median_db)} dB</div>
+                    <div>Std Dev: {Math.round(analysisResult.statistics.std_db)} dB</div>
                   </div>
                 </div>
 
@@ -102,10 +135,10 @@ function AudioAnalysisResultsPopover({
                 <div>
                   <h4 className="font-semibold text-black mb-1">Percentiles</h4>
                   <div className="text-gray-600 space-y-1">
-                    <div>10th: {analysisResult.statistics.percentiles['10th'].toFixed(1)} dB</div>
-                    <div>25th: {analysisResult.statistics.percentiles['25th'].toFixed(1)} dB</div>
-                    <div>75th: {analysisResult.statistics.percentiles['75th'].toFixed(1)} dB</div>
-                    <div>90th: {analysisResult.statistics.percentiles['90th'].toFixed(1)} dB</div>
+                    <div>10th: {Math.round(analysisResult.statistics.percentiles['10th'])} dB</div>
+                    <div>25th: {Math.round(analysisResult.statistics.percentiles['25th'])} dB</div>
+                    <div>75th: {Math.round(analysisResult.statistics.percentiles['75th'])} dB</div>
+                    <div>90th: {Math.round(analysisResult.statistics.percentiles['90th'])} dB</div>
                   </div>
                 </div>
 
@@ -117,11 +150,13 @@ function AudioAnalysisResultsPopover({
                       <div key={key} className="flex items-center justify-between">
                         <div className="flex-1">
                           <div className="font-medium text-black text-xs">
-                            {key.charAt(0).toUpperCase() + key.slice(1).replace('_', ' ')}
+                            {key === 'speech_based'
+                              ? 'Speech Based'
+                              : key.charAt(0).toUpperCase() + key.slice(1).replace('_', ' ')}
                           </div>
                           <div className="text-gray-600 text-xs">{suggestion.description}</div>
                           <div className="font-mono text-xs text-gray-800">
-                            {suggestion.threshold.toFixed(1)} dB
+                            {Math.round(suggestion.threshold)} dB
                           </div>
                         </div>
                         <Button

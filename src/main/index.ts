@@ -23,6 +23,9 @@ let mainWindow: BrowserWindow | null = null
 // Store processing parameters for WebSocket workflow
 let currentProcessingParams: CleanCutArgs | null = null
 
+// Store pending export requests
+const pendingExportRequests = new Map<string, (result: any) => void>()
+
 // Helper function to safely send messages to renderer
 function safelyNotifyRenderer(channel: string, data: any) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -34,12 +37,12 @@ function safelyNotifyRenderer(channel: string, data: any) {
   }
 }
 
-// Function to process audio file using Python script
+// Function to process audio file using VAD-based Python script
 async function processAudioFile(filePath: string, params: CleanCutArgs): Promise<number[][]> {
   const { threshold, minSilenceLen, padding } = params
-  const scriptPath = join(__dirname, '../../python-backend/silence_detector_energy.py')
+  const scriptPath = join(__dirname, '../../python-backend/vad_cutter.py')
 
-  console.log('=== PYTHON EXECUTION (Energy-Based Approach) ===')
+  console.log('=== PYTHON EXECUTION (VAD-Based Approach) ===')
   console.log('Script path:', scriptPath)
   console.log('File path:', filePath)
   console.log('Parameters:', params)
@@ -243,30 +246,64 @@ app.whenReady().then(() => {
 
       const { exportFolder, options } = params
 
-      // Send export request to Premiere Pro
-      premiereSocket.send(
-        JSON.stringify({
-          type: 'request_audio_export',
-          payload: {
-            exportFolder,
-            selectedTracks: options.selectedAudioTracks,
-            selectedRange: options.selectedRange
-          }
-        })
-      )
-      console.log('Sent request_audio_export to Premiere Pro with params:', params)
+      // Create a unique request ID for this export
+      const requestId = `export_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
-      return { success: true, message: 'Audio export request sent to Premiere Pro' }
+      // Create a Promise that will be resolved when the WebSocket response arrives
+      return new Promise((resolve, reject) => {
+        // Store the resolver function
+        pendingExportRequests.set(requestId, resolve)
+
+        // Set a timeout to prevent hanging forever
+        const timeout = setTimeout(() => {
+          pendingExportRequests.delete(requestId)
+          reject(new Error('Audio export timeout - no response from Premiere Pro after 30 seconds'))
+        }, 30000)
+
+        // Store the timeout with the request so we can clear it
+        const originalResolve = resolve
+        pendingExportRequests.set(requestId, (result: any) => {
+          clearTimeout(timeout)
+          pendingExportRequests.delete(requestId)
+          originalResolve(result)
+        })
+
+        // Send export request to Premiere Pro
+        if (!premiereSocket) {
+          clearTimeout(timeout)
+          pendingExportRequests.delete(requestId)
+          reject(new Error('Premiere Pro connection lost during export request'))
+          return
+        }
+
+        premiereSocket.send(
+          JSON.stringify({
+            type: 'request_audio_export',
+            payload: {
+              exportFolder,
+              selectedTracks: options.selectedAudioTracks,
+              selectedRange: options.selectedRange,
+              requestId // Include request ID so we can match the response
+            }
+          })
+        )
+        console.log(
+          'Sent request_audio_export to Premiere Pro with params:',
+          params,
+          'requestId:',
+          requestId
+        )
+      })
     }
   )
 
-  // Handler for analyzing audio levels
+  // Handler for analyzing audio with VAD (Voice Activity Detection)
   ipcMain.handle('analyze-audio', async (_, filePath: string) => {
     try {
       const pythonPath = join(__dirname, '../../python-backend/.venv/bin/python')
-      const scriptPath = join(__dirname, '../../python-backend/audio_analyzer.py')
+      const scriptPath = join(__dirname, '../../python-backend/vad_analyzer.py')
 
-      console.log('=== AUDIO ANALYSIS ===')
+      console.log('=== VAD AUDIO ANALYSIS ===')
       console.log('Script path:', scriptPath)
       console.log('File path:', filePath)
 
@@ -480,9 +517,35 @@ app.whenReady().then(() => {
             break
 
           case 'audio_export_response':
-            // Forward audio export result to renderer process (for AudioAnalysisButton)
+            // Handle audio export result and resolve pending export request
             console.log('Received audio export result from Premiere:', parsedMessage.payload)
-            safelyNotifyRenderer('audio-export-result', parsedMessage.payload)
+
+            // Try to parse the payload if it's a string
+            let exportResult = parsedMessage.payload
+            if (typeof exportResult === 'string') {
+              try {
+                exportResult = JSON.parse(exportResult)
+              } catch (e) {
+                console.error('Failed to parse audio export response payload:', e)
+              }
+            }
+
+            // Look for a pending request that matches this response
+            // Since we don't have the requestId in the response yet, resolve the first pending request
+            // TODO: Update Premiere Pro extension to include requestId in response for better matching
+            const pendingRequestIds = Array.from(pendingExportRequests.keys())
+            if (pendingRequestIds.length > 0) {
+              const requestId = pendingRequestIds[0] // Take the first pending request
+              const resolver = pendingExportRequests.get(requestId)
+              if (resolver) {
+                console.log('Resolving export request:', requestId, 'with result:', exportResult)
+                resolver(exportResult)
+              }
+            } else {
+              console.log('No pending export requests to resolve')
+              // Still forward to renderer for any other listeners
+              safelyNotifyRenderer('audio-export-result', exportResult)
+            }
             break
 
           case 'audio_path_response':
@@ -499,10 +562,10 @@ app.whenReady().then(() => {
               const { threshold, minSilenceLen, padding } = currentProcessingParams
               console.log('Using parameters:', currentProcessingParams)
 
-              // Reuse the existing Python processing logic
-              const scriptPath = join(__dirname, '../../python-backend/silence_detector_energy.py')
+              // Reuse the existing Python processing logic with VAD
+              const scriptPath = join(__dirname, '../../python-backend/vad_cutter.py')
 
-              console.log('=== PYTHON EXECUTION FROM WEBSOCKET (Energy-Based) ===')
+              console.log('=== PYTHON EXECUTION FROM WEBSOCKET (VAD-Based) ===')
               console.log('Script path:', scriptPath)
               console.log('File path received:', filePath)
 

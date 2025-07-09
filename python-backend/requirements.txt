@@ -1,4 +1,6 @@
 pydub
 numpy
-scipy
-matplotlib 
+torch
+torchaudio
+silero-vad
+soundfile 
