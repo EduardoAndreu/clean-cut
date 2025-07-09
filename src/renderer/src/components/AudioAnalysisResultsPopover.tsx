@@ -1,6 +1,5 @@
 import { Info } from 'lucide-react'
 import { Button } from './ui/button'
-import { ScrollArea } from './ui/scroll-area'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
 interface AudioAnalysisResult {
@@ -85,84 +84,25 @@ function AudioAnalysisResultsPopover({
               </p>
             </div>
           ) : (
-            <ScrollArea className="h-64 w-full">
-              <div className="space-y-3 text-xs">
-                {/* VAD Results (if available) */}
-                {analysisResult.vad_results && (
-                  <div>
-                    <h4 className="font-semibold text-black mb-1">Speech Detection</h4>
-                    <div className="text-gray-600 space-y-1">
-                      <div>Method: AI Voice Activity Detection</div>
-                      <div>Speech Segments: {analysisResult.vad_segments_detected}</div>
-                      <div>
-                        Speech: {analysisResult.vad_results.speech_percentage.toFixed(1)}% of audio
-                      </div>
-                      <div>
-                        Removable Silence:{' '}
-                        {analysisResult.removable_silence_duration?.toFixed(1) || '0'}s
-                      </div>
-                      <div>Confidence: {analysisResult.vad_results.confidence}</div>
-                    </div>
-                  </div>
-                )}
-
-                {/* File Info */}
-                <div>
-                  <h4 className="font-semibold text-black mb-1">File Information</h4>
-                  <div className="text-gray-600 space-y-1">
-                    <div>Duration: {analysisResult.file_info.duration_seconds.toFixed(1)}s</div>
-                    <div>Sample Rate: {analysisResult.file_info.sample_rate}Hz</div>
-                    <div>Channels: {analysisResult.file_info.channels}</div>
-                    <div>Bit Depth: {analysisResult.file_info.bit_depth}-bit</div>
-                  </div>
-                </div>
-
-                {/* Statistics */}
-                <div>
-                  <h4 className="font-semibold text-black mb-1">Level Statistics</h4>
-                  <div className="text-gray-600 space-y-1">
-                    <div>
-                      Range: {Math.round(analysisResult.statistics.min_db)} to{' '}
-                      {Math.round(analysisResult.statistics.max_db)} dB
-                    </div>
-                    <div>Mean: {Math.round(analysisResult.statistics.mean_db)} dB</div>
-                    <div>Median: {Math.round(analysisResult.statistics.median_db)} dB</div>
-                    <div>Std Dev: {Math.round(analysisResult.statistics.std_db)} dB</div>
-                  </div>
-                </div>
-
-                {/* Percentiles */}
-                <div>
-                  <h4 className="font-semibold text-black mb-1">Percentiles</h4>
-                  <div className="text-gray-600 space-y-1">
-                    <div>10th: {Math.round(analysisResult.statistics.percentiles['10th'])} dB</div>
-                    <div>25th: {Math.round(analysisResult.statistics.percentiles['25th'])} dB</div>
-                    <div>75th: {Math.round(analysisResult.statistics.percentiles['75th'])} dB</div>
-                    <div>90th: {Math.round(analysisResult.statistics.percentiles['90th'])} dB</div>
-                  </div>
-                </div>
-
-                {/* Threshold Suggestions */}
-                <div>
-                  <h4 className="font-semibold text-black mb-2">Suggested Thresholds</h4>
-                  <div className="space-y-2">
-                    {Object.entries(analysisResult.suggestions).map(([key, suggestion]) => (
-                      <div key={key} className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="font-medium text-black text-xs">
-                            {key === 'speech_based'
+            <div className="space-y-3 text-xs">
+              {/* Threshold Suggestions - Only Section */}
+              <div>
+                <h4 className="font-semibold text-black mb-2">Suggested Thresholds</h4>
+                <div className="space-y-2">
+                  {Object.entries(analysisResult.suggestions).map(([key, suggestion]) => (
+                    <div key={key} className="p-2 bg-gray-50 border border-gray-200 rounded">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium text-black text-xs">
+                          {key === 'vad_recommended'
+                            ? 'VAD Recommended'
+                            : key === 'speech_based'
                               ? 'Speech Based'
                               : key.charAt(0).toUpperCase() + key.slice(1).replace('_', ' ')}
-                          </div>
-                          <div className="text-gray-600 text-xs">{suggestion.description}</div>
-                          <div className="font-mono text-xs text-gray-800">
-                            {Math.round(suggestion.threshold)} dB
-                          </div>
-                        </div>
+                          : {Math.round(suggestion.threshold)} dB
+                        </span>
                         <Button
                           size="sm"
-                          variant="outline"
-                          className="ml-2 text-xs px-2 py-1"
+                          className="h-6 px-2 text-xs"
                           onClick={() =>
                             handleApplyThreshold(suggestion.threshold, suggestion.description)
                           }
@@ -170,26 +110,12 @@ function AudioAnalysisResultsPopover({
                           Apply
                         </Button>
                       </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Impact Analysis */}
-                <div>
-                  <h4 className="font-semibold text-black mb-1">Impact Analysis</h4>
-                  <div className="text-gray-600 space-y-1">
-                    {Object.entries(analysisResult.impact_analysis).map(
-                      ([threshold, percentage]) => (
-                        <div key={threshold} className="flex justify-between">
-                          <span>{threshold} dB:</span>
-                          <span>{percentage.toFixed(1)}% would be cut</span>
-                        </div>
-                      )
-                    )}
-                  </div>
+                      <div className="text-gray-600 text-xs">{suggestion.description}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </ScrollArea>
+            </div>
           )}
         </div>
       </PopoverContent>

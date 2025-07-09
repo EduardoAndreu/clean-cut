@@ -76,6 +76,16 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
   const [selectedRange, setSelectedRange] = useState<'entire' | 'inout' | 'selected'>('entire')
   const [analysisResult, setAnalysisResult] = useState<any>(null)
 
+  // Handle analysis results and auto-apply VAD recommendation
+  const handleAnalysisComplete = (result: any) => {
+    setAnalysisResult(result)
+
+    // Auto-apply VAD recommendation to slider if available
+    if (result?.suggestions?.vad_recommended?.threshold) {
+      setSilenceThreshold(result.suggestions.vad_recommended.threshold)
+    }
+  }
+
   // Effect hook for cleanup and side effects
   useEffect(() => {
     // Results are handled directly in Premiere Pro
@@ -455,7 +465,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
                     selectedAudioTracks={selectedAudioTracks}
                     selectedRange={selectedRange}
                     premiereConnected={premiereConnected}
-                    onAnalysisResult={setAnalysisResult}
+                    onAnalysisResult={handleAnalysisComplete}
                     onStatusUpdate={setStatus}
                     className="flex-shrink-0"
                   />

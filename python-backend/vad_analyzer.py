@@ -111,23 +111,82 @@ def analyze_speech_with_vad(audio_file):
         print(f"Gap range: {min_gap:.1f}s to {max_gap:.1f}s")
     print()
     
-    # Generate practical threshold suggestions based on VAD analysis
-    # These are more for UI compatibility - the real detection is done by VAD
+    # Analyze actual audio levels for meaningful threshold suggestions
+    print("Analyzing audio levels for threshold suggestions...")
+    
+    # Convert audio to numpy array for level analysis
+    audio_array = np.array(audio.get_array_of_samples())
+    if audio.channels == 2:
+        audio_array = audio_array.reshape((-1, 2)).mean(axis=1)  # Convert stereo to mono
+    
+    # Calculate RMS levels in dB for frames
+    frame_size = int(audio.frame_rate * 0.02)  # 20ms frames
+    db_levels = []
+    
+    for i in range(0, len(audio_array), frame_size):
+        frame = audio_array[i:i + frame_size].astype(np.float64)
+        if len(frame) > 0:
+            rms = np.sqrt(np.mean(frame ** 2))
+            if rms > 0:
+                # Normalize based on bit depth
+                if audio.sample_width == 1:
+                    max_val = 128
+                elif audio.sample_width == 2:
+                    max_val = 32768
+                elif audio.sample_width == 4:
+                    max_val = 2147483648
+                else:
+                    max_val = 32768
+                    
+                db_level = 20 * np.log10(rms / max_val)
+                db_levels.append(db_level)
+            else:
+                db_levels.append(-80)  # Very quiet
+    
+    db_levels = np.array(db_levels)
+    
+    # Calculate statistics
+    min_db = float(np.min(db_levels))
+    max_db = float(np.max(db_levels))
+    mean_db = float(np.mean(db_levels))
+    median_db = float(np.median(db_levels))
+    std_db = float(np.std(db_levels))
+    
+    # Calculate percentiles
+    percentiles = {
+        '10th': float(np.percentile(db_levels, 10)),
+        '25th': float(np.percentile(db_levels, 25)),
+        '75th': float(np.percentile(db_levels, 75)),
+        '90th': float(np.percentile(db_levels, 90)),
+        '95th': float(np.percentile(db_levels, 95))
+    }
+    
+    print(f"Audio level analysis:")
+    print(f"  Range: {min_db:.1f} to {max_db:.1f} dB")
+    print(f"  Mean: {mean_db:.1f} dB, Median: {median_db:.1f} dB")
+    print(f"  25th percentile: {percentiles['25th']:.1f} dB")
+    print(f"  75th percentile: {percentiles['75th']:.1f} dB")
+    
+    # Generate intelligent threshold suggestions based on actual audio levels
+    # Speech typically ranges from 25th to 75th percentile
+    speech_floor = percentiles['25th']  # Bottom of speech range
+    speech_range = percentiles['75th'] - percentiles['25th']
+    
     suggestions = {
         'vad_recommended': {
-            'threshold': -35,  # Arbitrary - VAD does the real work
+            'threshold': -35,  # VAD uses AI detection, threshold is just for UI
             'description': 'AI-powered speech detection (recommended)'
         },
         'conservative': {
-            'threshold': -45,
+            'threshold': round(speech_floor - speech_range * 0.3),  # Well below speech
             'description': 'Conservative - keeps more borderline speech'
         },
         'moderate': {
-            'threshold': -40, 
+            'threshold': round(speech_floor - speech_range * 0.1),  # Just below speech floor
             'description': 'Moderate - balanced speech/silence removal'
         },
         'aggressive': {
-            'threshold': -35,
+            'threshold': round(speech_floor + speech_range * 0.2),  # Into speech range
             'description': 'Aggressive - removes more quiet speech sections'
         }
     }
@@ -138,14 +197,21 @@ def analyze_speech_with_vad(audio_file):
     print("Energy thresholds are less reliable than AI detection")
     print()
     
-    # Create mock impact analysis for UI compatibility
-    impact_analysis = {
-        '-60': 0,  # VAD is much more precise than energy thresholds
-        '-50': silence_duration/total_duration * 20,  # Conservative estimate
-        '-40': silence_duration/total_duration * 60,  # Moderate estimate  
-        '-30': silence_duration/total_duration * 100,  # Would cut all detected silences
-        '-20': min(95, silence_duration/total_duration * 100 + 10)  # Aggressive
-    }
+    # Create impact analysis based on actual audio levels
+    silence_percentage = (silence_duration / total_duration) * 100
+    
+    # Calculate how much would be cut at different thresholds
+    impact_analysis = {}
+    test_thresholds = [-60, -50, -40, -30, -20]
+    
+    for threshold in test_thresholds:
+        # Estimate percentage that would be cut based on audio level distribution
+        frames_below_threshold = np.sum(db_levels < threshold)
+        percentage_below = (frames_below_threshold / len(db_levels)) * 100
+        
+        # Combine with VAD-detected silence for more accurate estimate
+        estimated_cut = min(95, percentage_below * 0.7 + silence_percentage * 0.3)
+        impact_analysis[str(threshold)] = round(estimated_cut, 1)
     
     # Output structured data for the main application
     output_data = {
@@ -164,18 +230,12 @@ def analyze_speech_with_vad(audio_file):
             'confidence': 'high'
         },
         'statistics': {
-            'min_db': -60,  # Mock values for UI compatibility
-            'max_db': -5,
-            'mean_db': -35,
-            'median_db': -40,
-            'std_db': 10,
-            'percentiles': {
-                '10th': -55,
-                '25th': -50,
-                '75th': -30,
-                '90th': -20,
-                '95th': -15
-            }
+            'min_db': min_db,
+            'max_db': max_db,
+            'mean_db': mean_db,
+            'median_db': median_db,
+            'std_db': std_db,
+            'percentiles': percentiles
         },
         'suggestions': suggestions,
         'impact_analysis': impact_analysis,
