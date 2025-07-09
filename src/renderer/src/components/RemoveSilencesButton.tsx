@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Button } from './ui/button'
 
 interface SequenceInfo {
@@ -81,39 +81,6 @@ function RemoveSilencesButton({
   // Hardcoded export location for processing
   const EXPORT_LOCATION = '/Users/ea/Downloads'
 
-  // Listen for silence processing results
-  useEffect(() => {
-    const handleSilenceProcessingResult = (_event: any, data: any) => {
-      console.log('Received silence processing result:', data)
-
-      if (data.success) {
-        const successMessage = `Silence processing completed!
-${data.message}
-Processing completed successfully.`
-        onStatusUpdate(successMessage)
-        onSuccess?.(successMessage)
-      } else {
-        const errorMessage = `Silence processing failed: ${data.message}`
-        onStatusUpdate(errorMessage)
-        onError?.(errorMessage)
-      }
-
-      setIsProcessing(false)
-    }
-
-    // Add IPC listeners
-    if (window.electron && window.electron.ipcRenderer) {
-      window.electron.ipcRenderer.on('silence-processing-result', handleSilenceProcessingResult)
-    }
-
-    return () => {
-      // Cleanup listeners on unmount
-      if (window.electron && window.electron.ipcRenderer) {
-        window.electron.ipcRenderer.removeAllListeners('silence-processing-result')
-      }
-    }
-  }, [onStatusUpdate, onError, onSuccess])
-
   const handleProcessFromPremiere = async () => {
     if (!premiereConnected) {
       const errorMsg =
@@ -146,42 +113,45 @@ Processing completed successfully.`
     onStatusUpdate('Exporting audio from Premiere Pro...')
 
     try {
-      await window.cleanCutAPI.exportAudioAndProcess(
-        EXPORT_LOCATION,
-        silenceThreshold,
-        minSilenceLen,
-        padding,
-        {
-          selectedAudioTracks,
-          selectedRange
+      // Step 1: Export audio from Premiere Pro
+      const exportResult = await window.cleanCutAPI.exportAudio(EXPORT_LOCATION, {
+        selectedAudioTracks,
+        selectedRange
+      })
+
+      if (exportResult.success && exportResult.outputPath) {
+        onStatusUpdate('Audio exported. Processing silences...')
+
+        // Step 2: Process the exported audio for silences
+        const processResult = await window.cleanCutAPI.processSilences(
+          exportResult.outputPath,
+          silenceThreshold,
+          minSilenceLen,
+          padding
+        )
+
+        if (processResult.success) {
+          const successMessage = `Silence processing completed!
+Found ${processResult.silenceCount || 0} silence ranges.
+Cuts have been sent to Premiere Pro.`
+          onStatusUpdate(successMessage)
+          onSuccess?.(successMessage)
+        } else {
+          const errorMessage = `Silence processing failed: ${processResult.error || 'Unknown error'}`
+          onStatusUpdate(errorMessage)
+          onError?.(errorMessage)
         }
-      )
-
-      const rangeText =
-        selectedRange === 'entire'
-          ? 'entire timeline'
-          : selectedRange === 'inout'
-            ? 'in/out points'
-            : 'selected clips'
-      const tracksText = selectedAudioTracks.map((t) => `A${t}`).join(', ')
-
-      onStatusUpdate(`Export and process request sent to Premiere Pro!
-Parameters:
-- Export location: ${EXPORT_LOCATION}
-- Range: ${rangeText}
-- Audio tracks: ${tracksText}
-- Threshold: ${silenceThreshold}dB
-- Min silence: ${minSilenceLen}ms  
-- Padding: ${padding}ms
-
-Step 1: Exporting audio...
-Step 2: Will analyze for silences...
-Step 3: Will cut at silence locations...`)
+      } else {
+        const errorMessage = `Audio export failed: ${exportResult.error || 'Unknown error'}`
+        onStatusUpdate(errorMessage)
+        onError?.(errorMessage)
+      }
     } catch (error) {
-      console.error('Export and process error:', error)
-      const errorMsg = `Error sending export and process request: ${error}`
+      console.error('Processing error:', error)
+      const errorMsg = `Error during processing: ${error}`
       onStatusUpdate(errorMsg)
       onError?.(errorMsg)
+    } finally {
       setIsProcessing(false)
     }
   }

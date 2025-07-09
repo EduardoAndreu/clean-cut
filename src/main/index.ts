@@ -224,7 +224,7 @@ app.whenReady().then(() => {
     return { success: true, message: 'Selected clips info request sent to Premiere Pro' }
   })
 
-  // Handler for exporting audio from Premiere Pro
+  // Handler for exporting audio from Premiere Pro (used by AudioAnalysisButton)
   ipcMain.handle(
     'export-audio',
     async (
@@ -326,49 +326,59 @@ app.whenReady().then(() => {
     }
   })
 
-  // Handler for exporting audio and processing with silence detection
+  // Handler for processing silences in an audio file
   ipcMain.handle(
-    'export-audio-and-process',
+    'process-silences',
     async (
       _,
       params: {
-        exportFolder: string
+        filePath: string
         silenceThreshold: number
         minSilenceLen: number
         padding: number
-        options: {
-          selectedAudioTracks: number[]
-          selectedRange: 'entire' | 'inout' | 'selected'
-        }
       }
     ) => {
-      if (!premiereSocket) {
-        throw new Error('Premiere Pro is not connected.')
-      }
+      const { filePath, silenceThreshold, minSilenceLen, padding } = params
 
-      const { exportFolder, silenceThreshold, minSilenceLen, padding, options } = params
+      try {
+        console.log('=== PROCESSING SILENCES ===')
+        console.log('File path:', filePath)
+        console.log('Parameters:', params)
 
-      // Store processing parameters for when audio export response comes back
-      currentProcessingParams = { threshold: silenceThreshold, minSilenceLen, padding, options }
-      console.log(
-        'Stored processing parameters for export-and-process workflow:',
-        currentProcessingParams
-      )
-
-      // Send export request to Premiere Pro
-      premiereSocket.send(
-        JSON.stringify({
-          type: 'request_audio_export_and_process',
-          payload: {
-            exportFolder,
-            selectedTracks: options.selectedAudioTracks,
-            selectedRange: options.selectedRange
-          }
+        // Process the audio file using the existing function
+        const silenceRanges = await processAudioFile(filePath, {
+          threshold: silenceThreshold,
+          minSilenceLen,
+          padding
         })
-      )
-      console.log('Sent request_audio_export_and_process to Premiere Pro with params:', params)
 
-      return { success: true, message: 'Export and process request sent to Premiere Pro' }
+        // Convert to cut format expected by Premiere
+        const cutCommands = silenceRanges.map((range: number[]) => ({
+          start: range[0],
+          end: range[1]
+        }))
+
+        // Send cut commands to Premiere
+        if (premiereSocket) {
+          premiereSocket.send(
+            JSON.stringify({
+              type: 'request_cuts',
+              payload: cutCommands
+            })
+          )
+          console.log('Sent cut requests to Premiere:', cutCommands)
+        }
+
+        return {
+          success: true,
+          message: `Found ${silenceRanges.length} silence ranges. Cuts sent to Premiere Pro.`,
+          silenceCount: silenceRanges.length
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        console.error('Silence processing error:', errorMessage)
+        return { success: false, error: errorMessage }
+      }
     }
   )
 
@@ -424,9 +434,6 @@ app.whenReady().then(() => {
   // Create WebSocket server for Premiere Pro communication
   const wss = new WebSocketServer({ port: 8085 })
 
-  // Store server reference for cleanup
-  let webSocketServer = wss
-
   wss.on('connection', (ws: WebSocket) => {
     console.log('Premiere Pro connected via WebSocket')
     premiereSocket = ws
@@ -473,149 +480,9 @@ app.whenReady().then(() => {
             break
 
           case 'audio_export_response':
-            // Forward audio export result to renderer process
+            // Forward audio export result to renderer process (for AudioAnalysisButton)
             console.log('Received audio export result from Premiere:', parsedMessage.payload)
             safelyNotifyRenderer('audio-export-result', parsedMessage.payload)
-            break
-
-          case 'audio_export_and_process_response':
-            // Handle export response for the export-and-process workflow
-            console.log('Received audio export result for processing:', parsedMessage.payload)
-
-            try {
-              const exportResult = JSON.parse(parsedMessage.payload)
-
-              if (exportResult.success && exportResult.outputPath) {
-                // Use stored parameters to process the exported audio
-                if (!currentProcessingParams) {
-                  throw new Error('No processing parameters stored')
-                }
-
-                const { threshold, minSilenceLen, padding } = currentProcessingParams
-                console.log('Processing exported audio with parameters:', currentProcessingParams)
-
-                // Process the exported audio file
-                const scriptPath = join(
-                  __dirname,
-                  '../../python-backend/silence_detector_energy.py'
-                )
-                console.log('=== PYTHON EXECUTION FROM EXPORT-AND-PROCESS (Energy-Based) ===')
-                console.log('Script path:', scriptPath)
-                console.log('File path:', exportResult.outputPath)
-
-                const pythonPath = join(__dirname, '../../python-backend/.venv/bin/python')
-                const pythonProcess = spawn(pythonPath, [
-                  scriptPath,
-                  exportResult.outputPath,
-                  threshold.toString(),
-                  minSilenceLen.toString(),
-                  padding.toString()
-                ])
-
-                let stdout = ''
-                let stderr = ''
-
-                pythonProcess.stdout.on('data', (data) => {
-                  const chunk = data.toString()
-                  console.log('Python stdout chunk:', chunk)
-                  stdout += chunk
-                })
-
-                pythonProcess.stderr.on('data', (data) => {
-                  const chunk = data.toString()
-                  console.log('Python stderr chunk:', chunk)
-                  stderr += chunk
-                })
-
-                pythonProcess.on('close', (code) => {
-                  console.log('Python process closed with code:', code)
-                  console.log('Full stdout:', stdout)
-                  console.log('Full stderr:', stderr)
-
-                  if (code === 0) {
-                    try {
-                      // Parse the JSON output from stdout
-                      const silenceRanges = JSON.parse(stdout.trim())
-                      console.log('Parsed silence ranges:', silenceRanges)
-                      console.log('Silence ranges length:', silenceRanges.length)
-
-                      // Convert to cut format expected by Premiere
-                      const cutCommands = silenceRanges.map((range: number[]) => ({
-                        start: range[0],
-                        end: range[1]
-                      }))
-
-                      // Send cut commands to Premiere
-                      if (premiereSocket) {
-                        premiereSocket.send(
-                          JSON.stringify({
-                            type: 'request_cuts',
-                            payload: cutCommands
-                          })
-                        )
-                        console.log('Sent cut requests to Premiere:', cutCommands)
-
-                        // Notify UI of success
-                        safelyNotifyRenderer('silence-processing-result', {
-                          success: true,
-                          message: `Found ${silenceRanges.length} silence ranges. Cuts sent to Premiere Pro.`,
-                          silenceCount: silenceRanges.length
-                        })
-                      }
-
-                      // Clear stored parameters after successful processing
-                      currentProcessingParams = null
-                    } catch (error) {
-                      const errorMessage = error instanceof Error ? error.message : String(error)
-                      console.error('JSON parse error:', errorMessage)
-
-                      // Notify UI of error
-                      safelyNotifyRenderer('silence-processing-result', {
-                        success: false,
-                        message: `Failed to parse silence detection results: ${errorMessage}`
-                      })
-
-                      currentProcessingParams = null
-                    }
-                  } else {
-                    console.error('Python script failed:', stderr)
-
-                    // Notify UI of error
-                    safelyNotifyRenderer('silence-processing-result', {
-                      success: false,
-                      message: `Python script failed: ${stderr}`
-                    })
-
-                    currentProcessingParams = null
-                  }
-                })
-
-                pythonProcess.on('error', (error) => {
-                  console.error('Failed to start Python process:', error.message)
-
-                  // Notify UI of error
-                  safelyNotifyRenderer('silence-processing-result', {
-                    success: false,
-                    message: `Failed to start Python process: ${error.message}`
-                  })
-
-                  currentProcessingParams = null
-                })
-              } else {
-                throw new Error(`Export failed: ${exportResult.error || 'Unknown error'}`)
-              }
-            } catch (error) {
-              const errorMessage = error instanceof Error ? error.message : String(error)
-              console.error('Error processing export result:', errorMessage)
-
-              // Notify UI of error
-              safelyNotifyRenderer('silence-processing-result', {
-                success: false,
-                message: `Error processing export result: ${errorMessage}`
-              })
-
-              currentProcessingParams = null
-            }
             break
 
           case 'audio_path_response':
@@ -629,7 +496,7 @@ app.whenReady().then(() => {
                 throw new Error('No processing parameters stored')
               }
 
-              const { threshold, minSilenceLen, padding, options } = currentProcessingParams
+              const { threshold, minSilenceLen, padding } = currentProcessingParams
               console.log('Using parameters:', currentProcessingParams)
 
               // Reuse the existing Python processing logic

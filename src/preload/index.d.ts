@@ -23,16 +23,12 @@ interface CleanCutAPI {
       selectedRange: 'entire' | 'inout' | 'selected'
     }
   ) => Promise<{ success: boolean; message: string; outputPath?: string; error?: string }>
-  exportAudioAndProcess: (
-    exportFolder: string,
+  processSilences: (
+    filePath: string,
     silenceThreshold: number,
     minSilenceLen: number,
-    padding: number,
-    options: {
-      selectedAudioTracks: number[]
-      selectedRange: 'entire' | 'inout' | 'selected'
-    }
-  ) => Promise<{ success: boolean; message: string }>
+    padding: number
+  ) => Promise<{ success: boolean; message: string; silenceCount?: number; error?: string }>
   analyzeAudio: (filePath: string) => Promise<{ success: boolean; data?: any; error?: string }>
   showOpenDialog: () => Promise<FileDialogResult | null>
   requestSequenceInfo: () => Promise<{ success: boolean; message: string }>

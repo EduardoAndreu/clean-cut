@@ -8,8 +8,8 @@ import { RadioGroup, RadioGroupItem } from './ui/radio-group'
 import { Label } from './ui/label'
 import ActiveSequence from './ActiveSequence'
 import RemoveSilencesButton from './RemoveSilencesButton'
-import ExportAudioTestButton from './ExportAudioTestButton'
 import AudioAnalysisButton from './AudioAnalysisButton'
+import AudioAnalysisResultsPopover from './AudioAnalysisResultsPopover'
 
 interface RemoveSilencesProps {
   premiereConnected: boolean
@@ -20,7 +20,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
   const [minSilenceLen, setMinSilenceLen] = useState<number>(200)
   const [padding, setPadding] = useState<number>(200)
   const [silenceManagement, setSilenceManagement] = useState<string>('remove')
-  const [status, setStatus] = useState<string>('Waiting for Premiere Pro connection...')
+  const [, setStatus] = useState<string>('Waiting for Premiere Pro connection...')
   const [sequenceInfo, setSequenceInfo] = useState<{
     success: boolean
     sequenceName?: string
@@ -74,6 +74,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
   } | null>(null)
   const [selectedAudioTracks, setSelectedAudioTracks] = useState<number[]>([])
   const [selectedRange, setSelectedRange] = useState<'entire' | 'inout' | 'selected'>('entire')
+  const [analysisResult, setAnalysisResult] = useState<any>(null)
 
   // Effect hook for cleanup and side effects
   useEffect(() => {
@@ -449,15 +450,21 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
                 <label className="text-xs font-semibold text-black">
                   Silence Threshold: {silenceThreshold} dB
                 </label>
-                <AudioAnalysisButton
-                  selectedAudioTracks={selectedAudioTracks}
-                  selectedRange={selectedRange}
-                  sequenceInfo={sequenceInfo}
-                  premiereConnected={premiereConnected}
-                  onThresholdSuggestion={(threshold) => setSilenceThreshold(threshold)}
-                  onStatusUpdate={setStatus}
-                  className="flex-shrink-0"
-                />
+                <div className="flex items-center gap-2">
+                  <AudioAnalysisButton
+                    selectedAudioTracks={selectedAudioTracks}
+                    selectedRange={selectedRange}
+                    premiereConnected={premiereConnected}
+                    onAnalysisResult={setAnalysisResult}
+                    onStatusUpdate={setStatus}
+                    className="flex-shrink-0"
+                  />
+                  <AudioAnalysisResultsPopover
+                    analysisResult={analysisResult}
+                    onThresholdSuggestion={(threshold) => setSilenceThreshold(threshold)}
+                    onStatusUpdate={setStatus}
+                  />
+                </div>
               </div>
               <Slider
                 value={[silenceThreshold]}
@@ -559,18 +566,6 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
 
           {/* Remove Silences Button */}
           <RemoveSilencesButton
-            silenceThreshold={silenceThreshold}
-            minSilenceLen={minSilenceLen}
-            padding={padding}
-            selectedAudioTracks={selectedAudioTracks}
-            selectedRange={selectedRange}
-            sequenceInfo={sequenceInfo}
-            premiereConnected={premiereConnected}
-            onStatusUpdate={setStatus}
-          />
-
-          {/* Export Audio Test Button */}
-          <ExportAudioTestButton
             silenceThreshold={silenceThreshold}
             minSilenceLen={minSilenceLen}
             padding={padding}
