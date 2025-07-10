@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from './ui/dropdown-menu'
-import { useTheme } from './theme-provider'
+import { useTheme } from './ui/theme-provider'
 
 function SettingsButton(): React.JSX.Element {
   const { setTheme } = useTheme()
