@@ -9,7 +9,8 @@ import { Label } from './ui/label'
 import ActiveSequence from './ActiveSequence'
 import RemoveSilencesButton from './RemoveSilencesButton'
 import AudioAnalysisButton from './AudioAnalysisButton'
-import AudioAnalysisResultsPopover from './AudioAnalysisResultsPopover'
+import AudioAnalysisResultsDialog from './AudioAnalysisResultsDialog'
+import InfoDialog from './ui/info-dialog'
 
 interface RemoveSilencesProps {
   premiereConnected: boolean
@@ -18,7 +19,7 @@ interface RemoveSilencesProps {
 function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.Element {
   const [silenceThreshold, setSilenceThreshold] = useState<number>(-30)
   const [minSilenceLen, setMinSilenceLen] = useState<number>(200)
-  const [padding, setPadding] = useState<number>(200)
+  const [padding, setPadding] = useState<number>(150)
   const [silenceManagement, setSilenceManagement] = useState<string>('remove')
   const [, setStatus] = useState<string>('Waiting for Premiere Pro connection...')
   const [sequenceInfo, setSequenceInfo] = useState<{
@@ -470,12 +471,12 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
                     selectedRange={selectedRange}
                     premiereConnected={premiereConnected}
                     onAnalysisResult={handleAnalysisComplete}
+                    onThresholdSuggestion={setSilenceThreshold}
                     onStatusUpdate={setStatus}
                     className="flex-shrink-0"
                   />
-                  <AudioAnalysisResultsPopover
+                  <AudioAnalysisResultsDialog
                     analysisResult={analysisResult}
-                    onThresholdSuggestion={(threshold) => setSilenceThreshold(threshold)}
                     onStatusUpdate={setStatus}
                   />
                 </div>
@@ -496,23 +497,43 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
 
             {/* Minimum Silence Length Slider */}
             <div className="mb-4">
-              <label className="block text-xs font-semibold text-foreground mb-2">
-                Minimum Silence Length: {minSilenceLen} ms
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-semibold text-foreground">
+                  Minimum Silence Length: {minSilenceLen} ms
+                </label>
+                <InfoDialog
+                  title="Minimum Silence Length"
+                  description={
+                    <>
+                      <p className="mb-3">
+                        This is the shortest duration of audio that will be considered a 'silence'
+                        and subsequently removed.
+                      </p>
+                      <ul className="list-disc list-inside space-y-2">
+                        <li>
+                          <strong>Higher values</strong> (e.g., 400ms) are safer and will only cut
+                          long, obvious pauses.
+                        </li>
+                        <li>
+                          <strong>Lower values</strong> (e.g., 100ms) are more aggressive and might
+                          remove natural breaths or short hesitations between words.
+                        </li>
+                      </ul>
+                    </>
+                  }
+                />
+              </div>
               <Slider
                 value={[minSilenceLen]}
                 onValueChange={(value) => setMinSilenceLen(value[0])}
                 min={50}
                 max={500}
-                step={1}
+                step={5}
                 className="w-full"
               />
               <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-                <span>Calm</span>
-                <span>Measured</span>
-                <span>Paced</span>
-                <span>Energetic</span>
-                <span>Jumpy</span>
+                <span>Aggressive</span>
+                <span>Conservative</span>
               </div>
               <div className="flex justify-between mt-1 text-xs text-muted-foreground">
                 <span>50 ms</span>
@@ -522,23 +543,37 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
 
             {/* Padding Slider */}
             <div className="mb-4">
-              <label className="block text-xs font-semibold text-foreground mb-2">
-                Padding: {padding} ms
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-semibold text-foreground">
+                  Padding: {padding} ms
+                </label>
+                <InfoDialog
+                  title="Padding"
+                  description={
+                    <>
+                      <p className="mb-3">
+                        Padding adds a safety buffer around your speech to prevent words from being
+                        cut off accidentally.
+                      </p>
+                      <p>
+                        It works by leaving a small amount of the original silence at the beginning
+                        and end of each cut, ensuring a smoother, more natural transition.
+                      </p>
+                    </>
+                  }
+                />
+              </div>
               <Slider
                 value={[padding]}
                 onValueChange={(value) => setPadding(value[0])}
                 min={50}
                 max={500}
-                step={1}
+                step={5}
                 className="w-full"
               />
               <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-                <span>Calm</span>
-                <span>Measured</span>
-                <span>Paced</span>
-                <span>Energetic</span>
-                <span>Jumpy</span>
+                <span>Aggressive</span>
+                <span>Conservative</span>
               </div>
               <div className="flex justify-between mt-1 text-xs text-muted-foreground">
                 <span>50 ms</span>

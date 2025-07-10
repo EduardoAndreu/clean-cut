@@ -3,45 +3,10 @@ import { Button } from './ui/button'
 import { Loader2 } from 'lucide-react'
 
 interface AudioAnalysisResult {
-  file_info: {
-    duration_seconds: number
-    sample_rate: number
-    channels: number
-    bit_depth: number
-  }
-  statistics: {
-    min_db: number
-    max_db: number
-    mean_db: number
-    median_db: number
-    std_db: number
-    percentiles: {
-      '10th': number
-      '25th': number
-      '75th': number
-      '90th': number
-      '95th': number
-    }
-  }
   suggestions: {
-    conservative?: { threshold: number; description: string }
-    moderate?: { threshold: number; description: string }
-    aggressive?: { threshold: number; description: string }
-    custom_percentile?: { threshold: number; description: string }
     vad_recommended?: { threshold: number; description: string }
   }
-  impact_analysis: Record<string, number>
   analysis_method?: string
-  vad_results?: {
-    speech_segments: Array<{ start: number; end: number }>
-    silence_segments: Array<{ start: number; end: number; duration: number }>
-    speech_duration: number
-    silence_duration: number
-    speech_percentage: number
-    confidence: string
-  }
-  vad_segments_detected?: number
-  removable_silence_duration?: number
 }
 
 interface AudioAnalysisButtonProps {
@@ -49,6 +14,7 @@ interface AudioAnalysisButtonProps {
   selectedRange: 'entire' | 'inout' | 'selected'
   premiereConnected: boolean
   onAnalysisResult: (result: AudioAnalysisResult | null) => void
+  onThresholdSuggestion: (threshold: number) => void
   onStatusUpdate: (status: string) => void
   className?: string
 }
@@ -58,6 +24,7 @@ function AudioAnalysisButton({
   selectedRange,
   premiereConnected,
   onAnalysisResult,
+  onThresholdSuggestion,
   onStatusUpdate,
   className
 }: AudioAnalysisButtonProps): React.JSX.Element {
@@ -95,8 +62,17 @@ function AudioAnalysisButton({
         const analysisResult = await window.cleanCutAPI.analyzeAudio(result.outputPath)
 
         if (analysisResult.success) {
+          const recommendedThreshold = analysisResult.data.suggestions?.vad_recommended?.threshold
           onAnalysisResult(analysisResult.data)
-          onStatusUpdate('Audio analysis complete! See results in the info panel.')
+
+          if (recommendedThreshold !== undefined) {
+            onThresholdSuggestion(Math.round(recommendedThreshold))
+            onStatusUpdate(
+              `Analysis complete. New threshold set to ${Math.round(recommendedThreshold)}dB.`
+            )
+          } else {
+            onStatusUpdate('Audio analysis complete! No threshold suggestion found.')
+          }
         } else {
           onStatusUpdate(`Analysis failed: ${analysisResult.error || 'Unknown error'}`)
           onAnalysisResult(null)
