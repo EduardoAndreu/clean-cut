@@ -16,8 +16,9 @@ const buttonVariants = cva(
         ghost: 'hover:bg-accent hover:text-accent-foreground',
         link: 'text-primary underline-offset-4 hover:underline',
         enabled:
-          'gap-3 text-black bg-white border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 shadow-lg hover:shadow-xl transition-all duration-200',
-        disabled: 'gap-3 text-gray-400 bg-white border-2 border-gray-100 shadow-md opacity-60'
+          'gap-3 text-foreground bg-background border-2 border-border hover:border-border/80 hover:bg-accent shadow-lg hover:shadow-xl transition-all duration-200',
+        disabled:
+          'gap-3 text-muted-foreground bg-background border-2 border-border/50 shadow-md opacity-60'
       },
       size: {
         default: 'h-10 px-4 py-2',

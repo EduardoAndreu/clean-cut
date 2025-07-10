@@ -273,7 +273,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
   }
 
   return (
-    <div className="w-full bg-white">
+    <div className="w-full bg-background">
       <ScrollArea className="h-[calc(100vh-12rem)] w-full">
         <div className="p-6">
           {/* Active Sequence */}
@@ -285,8 +285,10 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
 
           {/* Define Sections - always show, with different states based on connection */}
           <div className="mb-5">
-            <label className="block text-sm font-semibold text-black mb-2">Define Sections</label>
-            <div className="text-xs text-gray-500 mb-3">
+            <label className="block text-sm font-semibold text-foreground mb-2">
+              Define Sections
+            </label>
+            <div className="text-xs text-muted-foreground mb-3">
               Update the audio sections to be processed by Clean-Cut
             </div>
 
@@ -348,19 +350,19 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
                 getTimecodeInfo().endTimecode ===
                   (sequenceInfo?.durationTime ||
                     formatTimeWithFrames(sequenceInfo?.durationSeconds || 0)) ? (
-                <div className="p-2 bg-gray-50 border border-gray-200 rounded text-[10px] text-gray-600 mb-3">
+                <div className="p-2 bg-muted border border-border rounded text-[10px] text-muted-foreground mb-3">
                   ⚠️ No In/Out points set - using entire timeline
                 </div>
               ) : selectedRange === 'selected' &&
                 (!sequenceInfo?.selectedClips || sequenceInfo.selectedClips.length === 0) ? (
-                <div className="p-2 bg-gray-50 border border-gray-200 rounded text-[10px] text-gray-600 mb-3">
+                <div className="p-2 bg-muted border border-border rounded text-[10px] text-muted-foreground mb-3">
                   ⚠️ No clips selected - select clips in timeline first
                 </div>
               ) : null}
 
               {/* Start and End Points Display */}
               {premiereConnected && sequenceInfo?.success && (
-                <div className="text-xs text-gray-600 mb-3">
+                <div className="text-xs text-muted-foreground mb-3">
                   <div>
                     Start point:{' '}
                     <span className="font-mono text-xs">{getTimecodeInfo().startTimecode}</span>
@@ -375,8 +377,10 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
 
             {/* Audio Tracks */}
             <div className="mb-8">
-              <div className="block text-sm font-semibold text-black mb-2">Audio Tracks</div>
-              <div className="text-xs text-gray-500 mb-3">Select which audio tracks to process</div>
+              <div className="block text-sm font-semibold text-foreground mb-2">Audio Tracks</div>
+              <div className="text-xs text-muted-foreground mb-3">
+                Select which audio tracks to process
+              </div>
               {!premiereConnected ? (
                 <ConnectionPrompt action="view audio tracks" size="sm" className="mb-6" />
               ) : (
@@ -388,7 +392,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
                     return (
                       <div
                         key={trackNumber}
-                        className="flex items-center gap-3 p-2 bg-gray-50 border border-gray-200 rounded cursor-pointer hover:bg-gray-100 transition-colors"
+                        className="flex items-center gap-3 p-2 bg-muted border border-border rounded cursor-pointer hover:bg-accent transition-colors"
                         onClick={() => {
                           if (isSelected) {
                             setSelectedAudioTracks((prev) => prev.filter((t) => t !== trackNumber))
@@ -402,7 +406,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
                           onChange={() => {}} // onClick handler on parent handles this
                           className="flex-shrink-0"
                         />
-                        <span className="text-xs font-semibold text-black min-w-[20px]">
+                        <span className="text-xs font-semibold text-foreground min-w-[20px]">
                           A{trackNumber}
                         </span>
                         {/* Static waveform graphic */}
@@ -435,7 +439,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
                               <div
                                 key={barIndex}
                                 className={`w-0.5 rounded-sm transition-colors duration-300 ${
-                                  isSelected ? 'bg-black' : 'bg-gray-300'
+                                  isSelected ? 'bg-foreground' : 'bg-muted-foreground'
                                 }`}
                                 style={{ height: `${heights[barIndex]}px` }}
                               />
@@ -452,12 +456,12 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
 
           {/* Settings */}
           <div className="mb-8">
-            <div className="block text-sm font-semibold text-black mb-4">Settings</div>
+            <div className="block text-sm font-semibold text-foreground mb-4">Settings</div>
 
             {/* Silence Threshold Slider */}
             <div className="mb-8">
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-semibold text-black">
+                <label className="text-xs font-semibold text-foreground">
                   Silence Threshold: {silenceThreshold} dB
                 </label>
                 <div className="flex items-center gap-2">
@@ -484,7 +488,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
                 step={1}
                 className="w-full"
               />
-              <div className="flex justify-between mt-1 text-xs text-gray-500">
+              <div className="flex justify-between mt-1 text-xs text-muted-foreground">
                 <span>-60 dB</span>
                 <span>0 dB</span>
               </div>
@@ -492,7 +496,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
 
             {/* Minimum Silence Length Slider */}
             <div className="mb-4">
-              <label className="block text-xs font-semibold text-black mb-2">
+              <label className="block text-xs font-semibold text-foreground mb-2">
                 Minimum Silence Length: {minSilenceLen} ms
               </label>
               <Slider
@@ -503,14 +507,14 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
                 step={1}
                 className="w-full"
               />
-              <div className="flex justify-between mt-2 text-xs text-gray-500">
+              <div className="flex justify-between mt-2 text-xs text-muted-foreground">
                 <span>Calm</span>
                 <span>Measured</span>
                 <span>Paced</span>
                 <span>Energetic</span>
                 <span>Jumpy</span>
               </div>
-              <div className="flex justify-between mt-1 text-xs text-gray-500">
+              <div className="flex justify-between mt-1 text-xs text-muted-foreground">
                 <span>50 ms</span>
                 <span>500 ms</span>
               </div>
@@ -518,7 +522,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
 
             {/* Padding Slider */}
             <div className="mb-4">
-              <label className="block text-xs font-semibold text-black mb-2">
+              <label className="block text-xs font-semibold text-foreground mb-2">
                 Padding: {padding} ms
               </label>
               <Slider
@@ -529,14 +533,14 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
                 step={1}
                 className="w-full"
               />
-              <div className="flex justify-between mt-2 text-xs text-gray-500">
+              <div className="flex justify-between mt-2 text-xs text-muted-foreground">
                 <span>Calm</span>
                 <span>Measured</span>
                 <span>Paced</span>
                 <span>Energetic</span>
                 <span>Jumpy</span>
               </div>
-              <div className="flex justify-between mt-1 text-xs text-gray-500">
+              <div className="flex justify-between mt-1 text-xs text-muted-foreground">
                 <span>50 ms</span>
                 <span>500 ms</span>
               </div>
@@ -545,29 +549,31 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
 
           {/* Silence Management */}
           <div className="mb-8">
-            <div className="block text-sm font-semibold text-black mb-4">Silence Management</div>
+            <div className="block text-sm font-semibold text-foreground mb-4">
+              Silence Management
+            </div>
             <RadioGroup value={silenceManagement} onValueChange={setSilenceManagement}>
               <div className="flex items-center gap-3">
                 <RadioGroupItem value="remove" id="remove" />
-                <Label htmlFor="remove" className="text-xs text-black">
+                <Label htmlFor="remove" className="text-xs text-foreground">
                   Remove silences
                 </Label>
               </div>
               <div className="flex items-center gap-3">
                 <RadioGroupItem value="keep" id="keep" />
-                <Label htmlFor="keep" className="text-xs text-black">
+                <Label htmlFor="keep" className="text-xs text-foreground">
                   Keep silences
                 </Label>
               </div>
               <div className="flex items-center gap-3">
                 <RadioGroupItem value="mute" id="mute" />
-                <Label htmlFor="mute" className="text-xs text-black">
+                <Label htmlFor="mute" className="text-xs text-foreground">
                   Mute silences
                 </Label>
               </div>
               <div className="flex items-center gap-3">
                 <RadioGroupItem value="keep-spaces" id="keep-spaces" />
-                <Label htmlFor="keep-spaces" className="text-xs text-black">
+                <Label htmlFor="keep-spaces" className="text-xs text-foreground">
                   Remove silences but keep spaces
                 </Label>
               </div>

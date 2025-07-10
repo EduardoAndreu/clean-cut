@@ -25,11 +25,13 @@ function ActiveSequence({
 }: ActiveSequenceProps): React.JSX.Element {
   return (
     <div className={`mb-8 ${className}`}>
-      <label className="block text-sm font-semibold mb-2">Active Sequence</label>
-      <div className="text-xs text-gray-500 mb-3">Refresh if you select open a new sequence</div>
-      <div className="p-2 bg-gray-50 border rounded-lg">
+      <label className="block text-sm font-semibold text-foreground mb-2">Active Sequence</label>
+      <div className="text-xs text-muted-foreground mb-3">
+        Refresh if you select open a new sequence
+      </div>
+      <div className="p-2 bg-muted border border-border rounded-lg">
         <div className="flex justify-between text-xs mb-1">
-          <span className="font-semibold text-black">
+          <span className="font-semibold text-foreground">
             {!premiereConnected
               ? 'Premiere Pro Not Connected'
               : sequenceInfo?.success
@@ -48,11 +50,11 @@ function ActiveSequence({
         {!premiereConnected ? (
           <ConnectionPrompt action="view sequence information" size="sm" />
         ) : sequenceInfo?.success ? (
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-muted-foreground">
             Project: {sequenceInfo.projectName} | Frame Rate: {sequenceInfo.frameRate}
           </div>
         ) : (
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-muted-foreground">
             {sequenceInfo?.error || 'Click refresh to get sequence information'}
           </div>
         )}

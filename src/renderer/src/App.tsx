@@ -42,10 +42,10 @@ function App(): React.JSX.Element {
         {currentPage === 'landing' ? (
           <LandingPage onRemoveSilences={handleRemoveSilences} />
         ) : (
-          <div className="min-h-full bg-white flex flex-col py-8 px-4">
+          <div className="min-h-full bg-background text-foreground flex flex-col py-8 px-4">
             {/* Header with page title and return button */}
             <div className="flex justify-between items-center mb-8 px-6">
-              <h2 className="text-2xl font-bold text-secondary-foreground">
+              <h2 className="text-2xl font-bold text-foreground">
                 {currentPage === 'remove-silences' ? 'Remove Silences' : 'Clean-Cut'}
               </h2>
               <ReturnHomeButton onReturnHome={handleBackToLanding} />
@@ -60,7 +60,7 @@ function App(): React.JSX.Element {
       </div>
 
       {/* Global connection status at the bottom - part of document flow */}
-      <div className="flex justify-center py-4 bg-white border-t border-gray-100">
+      <div className="flex justify-center py-4 bg-background border-t border-border">
         <PremierConnectionStatus isConnected={premiereConnected} />
       </div>
     </div>

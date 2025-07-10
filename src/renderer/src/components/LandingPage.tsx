@@ -2,8 +2,8 @@ import React from 'react'
 import { Button } from './ui/button'
 import PipelineLabel from './PipelineLabel'
 import SettingsButton from './SettingsButton'
+import ThemeLogo from './ThemeLogo'
 import { Scissors, ZoomIn, BookOpen, Mic, RotateCcw, Filter } from 'lucide-react'
-import logoImg from '../assets/logo.png'
 
 interface LandingPageProps {
   onRemoveSilences: () => void
@@ -11,13 +11,13 @@ interface LandingPageProps {
 
 function LandingPage({ onRemoveSilences }: LandingPageProps): React.JSX.Element {
   return (
-    <div className="min-h-full bg-white flex flex-col p-8">
+    <div className="min-h-full bg-background text-foreground flex flex-col p-8">
       {/* Main content container */}
       <div className="flex-1 flex items-center justify-center">
         <div className="container mx-auto">
           {/* Header with logo and settings - aligned to grid */}
           <div className="flex justify-between items-center mb-8">
-            <img src={logoImg} alt="Clean-Cut Logo" className="h-10 w-auto" />
+            <ThemeLogo />
             <SettingsButton />
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-8 justify-items-center">
@@ -29,7 +29,7 @@ function LandingPage({ onRemoveSilences }: LandingPageProps): React.JSX.Element 
                 size="square"
                 className="flex-col"
               >
-                <Scissors className="w-5 h-5 text-black" />
+                <Scissors className="w-5 h-5 text-current" />
                 Remove Silences
               </Button>
             </div>
@@ -37,7 +37,7 @@ function LandingPage({ onRemoveSilences }: LandingPageProps): React.JSX.Element 
             {/* Add Zooms - Disabled */}
             <div className="relative group">
               <Button disabled variant="disabled" size="square" className="flex-col">
-                <ZoomIn className="w-5 h-5 text-gray-400" />
+                <ZoomIn className="w-5 h-5 text-current" />
                 Add Zooms
               </Button>
               <PipelineLabel />
@@ -46,7 +46,7 @@ function LandingPage({ onRemoveSilences }: LandingPageProps): React.JSX.Element 
             {/* Add Chapters - Disabled */}
             <div className="relative group">
               <Button disabled variant="disabled" size="square" className="flex-col">
-                <BookOpen className="w-5 h-5 text-gray-400" />
+                <BookOpen className="w-5 h-5 text-current" />
                 Add Chapters
               </Button>
               <PipelineLabel />
@@ -55,7 +55,7 @@ function LandingPage({ onRemoveSilences }: LandingPageProps): React.JSX.Element 
             {/* Podcasts - Disabled */}
             <div className="relative group">
               <Button disabled variant="disabled" size="square" className="flex-col">
-                <Mic className="w-5 h-5 text-gray-400" />
+                <Mic className="w-5 h-5 text-current" />
                 Podcasts
               </Button>
               <PipelineLabel />
@@ -64,7 +64,7 @@ function LandingPage({ onRemoveSilences }: LandingPageProps): React.JSX.Element 
             {/* Remove Repetition - Disabled */}
             <div className="relative group">
               <Button disabled variant="disabled" size="square" className="flex-col">
-                <RotateCcw className="w-5 h-5 text-gray-400" />
+                <RotateCcw className="w-5 h-5 text-current" />
                 Remove Repetition
               </Button>
               <PipelineLabel />
@@ -73,7 +73,7 @@ function LandingPage({ onRemoveSilences }: LandingPageProps): React.JSX.Element 
             {/* Filter Profanity - Disabled */}
             <div className="relative group">
               <Button disabled variant="disabled" size="square" className="flex-col">
-                <Filter className="w-5 h-5 text-gray-400" />
+                <Filter className="w-5 h-5 text-current" />
                 Filter Profanity
               </Button>
               <PipelineLabel />

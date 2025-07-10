@@ -20,7 +20,7 @@ const ConnectionPrompt = React.forwardRef<HTMLDivElement, ConnectionPromptProps>
       <div
         ref={ref}
         className={cn(
-          'bg-gray-50 border rounded text-gray-500 flex items-center justify-center gap-2 shadow-sm',
+          'bg-muted border border-border rounded text-muted-foreground flex items-center justify-center gap-2 shadow-sm',
           sizeClasses[size],
           className
         )}

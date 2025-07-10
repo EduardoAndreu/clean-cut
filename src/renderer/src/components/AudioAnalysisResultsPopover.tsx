@@ -71,15 +71,15 @@ function AudioAnalysisResultsPopover({
       </PopoverTrigger>
       <PopoverContent className="w-80" align="start">
         <div>
-          <h3 className="text-sm font-semibold text-black mb-3">
+          <h3 className="text-sm font-semibold text-foreground mb-3">
             {analysisResult?.analysis_method === 'vad' ? 'AI Speech Analysis' : 'Audio Analysis'}
           </h3>
 
           {!analysisResult ? (
             <div className="text-center py-8">
-              <Info className="h-8 w-8 mx-auto text-gray-400 mb-3" />
-              <p className="text-sm text-gray-600 mb-2">No analysis results yet</p>
-              <p className="text-xs text-gray-500">
+              <Info className="h-8 w-8 mx-auto text-muted-foreground mb-3" />
+              <p className="text-sm text-muted-foreground mb-2">No analysis results yet</p>
+              <p className="text-xs text-muted-foreground">
                 Click "Analyze" to detect speech vs silence using AI
               </p>
             </div>
@@ -87,12 +87,12 @@ function AudioAnalysisResultsPopover({
             <div className="space-y-3 text-xs">
               {/* Threshold Suggestions - Only Section */}
               <div>
-                <h4 className="font-semibold text-black mb-2">Suggested Thresholds</h4>
+                <h4 className="font-semibold text-foreground mb-2">Suggested Thresholds</h4>
                 <div className="space-y-2">
                   {Object.entries(analysisResult.suggestions).map(([key, suggestion]) => (
-                    <div key={key} className="p-2 bg-gray-50 border border-gray-200 rounded">
+                    <div key={key} className="p-2 bg-muted border border-border rounded">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="font-medium text-black text-xs">
+                        <span className="font-medium text-foreground text-xs">
                           {key === 'vad_recommended'
                             ? 'VAD Recommended'
                             : key === 'speech_based'
@@ -110,7 +110,7 @@ function AudioAnalysisResultsPopover({
                           Apply
                         </Button>
                       </div>
-                      <div className="text-gray-600 text-xs">{suggestion.description}</div>
+                      <div className="text-muted-foreground text-xs">{suggestion.description}</div>
                     </div>
                   ))}
                 </div>
