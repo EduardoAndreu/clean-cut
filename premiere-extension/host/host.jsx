@@ -160,26 +160,6 @@ function logMessage(message) {
 }
 
 /**
- * Simple test function to verify ExtendScript communication
- * @returns {string} JSON string with test result
- */
-function testExtendScriptConnection() {
-  try {
-    return JSON.stringify({
-      success: true,
-      message: 'ExtendScript communication is working!',
-      timestamp: new Date().getTime(),
-      premiereVersion: app.version || 'unknown'
-    })
-  } catch (error) {
-    return JSON.stringify({
-      success: false,
-      error: 'Test error: ' + error.toString()
-    })
-  }
-}
-
-/**
  * Exports the active sequence's audio as a WAV file
  * @returns {string} JSON string containing the file path or error message
  */
