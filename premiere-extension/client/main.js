@@ -408,6 +408,161 @@ function performCutAtTime() {
   })
 }
 
+// Function to test ExtendScript communication
+function testExtendScriptCommunication() {
+  const testButton = document.getElementById('test-communication-button')
+
+  testButton.disabled = true
+  testButton.textContent = 'Testing...'
+
+  addLogEntry('Testing ExtendScript communication...', 'info')
+
+  cs.evalScript('testExtendScriptConnection()', function (result) {
+    // Log the raw result for debugging
+    console.log('Test ExtendScript result:', result)
+    addLogEntry(`Test result: ${result}`, 'info')
+
+    try {
+      const resultData = JSON.parse(result)
+      console.log('Parsed test result:', resultData)
+
+      if (resultData.success) {
+        addLogEntry(`ExtendScript test SUCCESS: ${resultData.message}`, 'success')
+        addLogEntry(`Premiere version: ${resultData.premiereVersion}`, 'info')
+
+        // If basic test works, also test the new removal approach
+        testNewRemovalApproach()
+      } else {
+        addLogEntry(`ExtendScript test FAILED: ${resultData.error}`, 'error')
+      }
+    } catch (error) {
+      addLogEntry(`Test parse error: ${error.message}`, 'error')
+      addLogEntry(`Raw test result was: "${result}"`, 'error')
+    }
+
+    // Re-enable button
+    testButton.disabled = false
+    testButton.textContent = 'Test ExtendScript'
+  })
+}
+
+// Test the new removal approach
+function testNewRemovalApproach() {
+  addLogEntry('Testing new removal approach...', 'info')
+
+  cs.evalScript(
+    `
+    try {
+      var sequence = app.project.activeSequence;
+      if (!sequence) {
+        return JSON.stringify({success: false, error: 'No active sequence'});
+      }
+      
+      var selection = sequence.getSelection();
+      if (!selection || selection.length === 0) {
+        return JSON.stringify({success: false, error: 'No clips selected'});
+      }
+      
+      var clip = selection[0];
+      return JSON.stringify({
+        success: true,
+        message: 'Found selected clip: ' + clip.name,
+        clipName: clip.name,
+        startTime: parseFloat(clip.start.seconds),
+        endTime: parseFloat(clip.end.seconds),
+        hasSetSelected: typeof sequence.videoTracks[0].clips[0].setSelected === 'function'
+      });
+    } catch (e) {
+      return JSON.stringify({success: false, error: e.toString()});
+    }
+  `,
+    function (result) {
+      addLogEntry(`New approach test result: ${result}`, 'info')
+
+      try {
+        const data = JSON.parse(result)
+        if (data.success) {
+          addLogEntry(`✓ Can access selected clip: ${data.clipName}`, 'success')
+          addLogEntry(`✓ Clip timing: ${data.startTime}s to ${data.endTime}s`, 'success')
+          addLogEntry(`✓ setSelected method available: ${data.hasSetSelected}`, 'success')
+        } else {
+          addLogEntry(`✗ New approach test failed: ${data.error}`, 'error')
+        }
+      } catch (e) {
+        addLogEntry(`✗ New approach parse error: ${e.message}`, 'error')
+      }
+    }
+  )
+}
+
+// Function to perform silence management on selected clip
+function performSilenceManagement() {
+  const actionSelect = document.getElementById('silence-action-select')
+  const processButton = document.getElementById('silence-process-button')
+
+  if (!actionSelect.value) {
+    addLogEntry('No action selected', 'error')
+    return
+  }
+
+  const selectedAction = actionSelect.value
+  processButton.disabled = true
+  processButton.textContent = 'Processing...'
+
+  addLogEntry(`Starting silence management: ${selectedAction}`, 'info')
+
+  // Call the appropriate ExtendScript function based on the selected action
+  let scriptCall = ''
+  switch (selectedAction) {
+    case 'remove-keep-gap':
+      scriptCall = 'removeSelectedClipKeepGap()'
+      break
+    case 'remove-ripple':
+      scriptCall = 'removeSelectedClipRipple()'
+      break
+    case 'mute':
+      scriptCall = 'muteSelectedClip()'
+      break
+    default:
+      addLogEntry('Invalid action selected', 'error')
+      processButton.disabled = false
+      processButton.textContent = 'Process'
+      return
+  }
+
+  cs.evalScript(scriptCall, function (result) {
+    // Log the raw result for debugging
+    console.log('Raw ExtendScript result:', result)
+    console.log('Result type:', typeof result)
+    console.log('Result length:', result ? result.length : 'null/undefined')
+    addLogEntry(`Raw ExtendScript result: ${result}`, 'info')
+
+    try {
+      const resultData = JSON.parse(result)
+      console.log('Parsed silence management result:', resultData)
+
+      if (resultData.success) {
+        addLogEntry(`${resultData.message}`, 'success')
+      } else {
+        // Handle both 'error' and 'message' fields for failed operations
+        const errorMessage = resultData.error || resultData.message || 'Unknown error'
+        addLogEntry(`Operation failed: ${errorMessage}`, 'error')
+      }
+    } catch (error) {
+      addLogEntry(`Parse error: ${error.message}`, 'error')
+      addLogEntry(`Raw result was: "${result}"`, 'error')
+      console.error('Error parsing silence management result:', error)
+    }
+
+    // Re-enable button
+    processButton.disabled = false
+    processButton.textContent = 'Process'
+
+    // Refresh sequence info to update display
+    refreshSequenceInfo()
+  })
+}
+
 // Function to refresh sequence info
 function refreshSequenceInfo() {
   addLogEntry('Refreshing sequence info...', 'info')

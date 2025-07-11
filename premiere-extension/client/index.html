@@ -158,6 +158,41 @@
       </div>
     </div>
 
+    <div class="silence-management-section">
+      <label class="status-label">Silence Management Test</label>
+      <div class="details-container">
+        <p><strong>ExtendScript Communication Test:</strong></p>
+        <div class="form-row">
+          <button
+            id="test-communication-button"
+            onclick="testExtendScriptCommunication()"
+            class="form-button test"
+          >
+            Test ExtendScript
+          </button>
+        </div>
+
+        <div class="separator"></div>
+
+        <p><strong>Action for Selected Clip:</strong></p>
+        <div class="form-row">
+          <select id="silence-action-select" class="form-select">
+            <option value="remove-keep-gap">Remove (Keep Gap)</option>
+            <option value="remove-ripple">Remove (Ripple Delete)</option>
+            <option value="mute">Mute Clip</option>
+          </select>
+          <button
+            id="silence-process-button"
+            onclick="performSilenceManagement()"
+            class="form-button process"
+          >
+            Process
+          </button>
+        </div>
+        <p class="form-help-text">Select a clip first, then choose an action to apply</p>
+      </div>
+    </div>
+
     <div class="logs-section">
       <label class="status-label">Debug Log</label>
       <div id="logs-container" class="logs-container">

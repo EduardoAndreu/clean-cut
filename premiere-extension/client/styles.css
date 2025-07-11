@@ -254,6 +254,10 @@ body {
   margin-bottom: 20px;
 }
 
+.silence-management-section {
+  margin-bottom: 20px;
+}
+
 .details-container {
   padding: 12px;
   background-color: #383838;
@@ -320,6 +324,53 @@ body {
 
 .form-button.cut:hover {
   background-color: #d32f2f;
+}
+
+.form-button.process {
+  background-color: #f44336;
+}
+
+.form-button.process:hover {
+  background-color: #d32f2f;
+}
+
+.form-button.test {
+  background-color: #2196f3;
+}
+
+.form-button.test:hover {
+  background-color: #1976d2;
+}
+
+.form-select {
+  padding: 8px 12px;
+  background-color: #383838;
+  border: 1px solid #505050;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+  flex: 1;
+  min-width: 0;
+}
+
+.form-select:hover {
+  border-color: #666;
+  background-color: #404040;
+}
+
+.form-select:focus {
+  border-color: #2196f3;
+  background-color: #404040;
+}
+
+.form-select option {
+  background-color: #383838;
+  color: #ffffff;
+  padding: 8px;
 }
 
 .form-help-text {

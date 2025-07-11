@@ -1,6 +1,144 @@
 // Clean-Cut ExtendScript Host Functions
 // This file contains functions that interact with Premiere Pro's API
 
+// Add polyfill for Object.keys (ExtendScript doesn't have it)
+if (!Object.keys) {
+  Object.keys = function (obj) {
+    if (obj !== Object(obj)) {
+      throw new TypeError('Object.keys called on a non-object')
+    }
+    var keys = []
+    for (var p in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, p)) {
+        keys.push(p)
+      }
+    }
+    return keys
+  }
+}
+
+/**
+ * Robust clip deletion that handles New World Scripting issues
+ * @param {number} trackIndex - Track index (0-based)
+ * @param {number} clipIndex - Clip index on the track (0-based)
+ * @param {boolean} isVideo - True for video track, false for audio track
+ * @param {boolean} ripple - True for ripple delete, false to keep gap
+ * @returns {object} Result object with success status and methods tried
+ */
+function robustDeleteClip(trackIndex, clipIndex, isVideo, ripple) {
+  var results = {
+    success: false,
+    error: 'All deletion methods failed',
+    methods: []
+  }
+
+  // Method 1: Try official trackItem.remove() method (Premiere Pro 13.1+)
+  try {
+    var sequence = app.project.activeSequence
+    if (sequence) {
+      var track = isVideo ? sequence.videoTracks[trackIndex] : sequence.audioTracks[trackIndex]
+
+      if (track && clipIndex < track.clips.numItems) {
+        var clip = track.clips[clipIndex]
+
+        // Use the official remove method
+        // Parameters: inRipple (boolean), inAlignToVideo (boolean)
+        var removeResult = clip.remove(ripple, true)
+
+        if (removeResult === 0) {
+          // 0 means success
+          results.success = true
+          results.method = 'trackItem.remove()'
+          results.methods.push('trackItem.remove() - Success')
+          return results
+        }
+      }
+    }
+  } catch (removeError) {
+    results.methods.push('trackItem.remove() - Failed: ' + removeError.toString())
+  }
+
+  // Method 2: Try executeCommand approach (fallback)
+  try {
+    var sequence = app.project.activeSequence
+    if (sequence) {
+      var track = isVideo ? sequence.videoTracks[trackIndex] : sequence.audioTracks[trackIndex]
+
+      if (track && clipIndex < track.clips.numItems) {
+        var clip = track.clips[clipIndex]
+
+        // Clear selection manually since sequence.clearSelection() doesn't exist
+        try {
+          // Clear selection on all video tracks
+          for (var v = 0; v < sequence.videoTracks.numTracks; v++) {
+            var vTrack = sequence.videoTracks[v]
+            for (var vc = 0; vc < vTrack.clips.numItems; vc++) {
+              try {
+                vTrack.clips[vc].setSelected(false, false)
+              } catch (e) {
+                // Skip clips that can't be deselected
+              }
+            }
+          }
+          // Clear selection on all audio tracks
+          for (var a = 0; a < sequence.audioTracks.numTracks; a++) {
+            var aTrack = sequence.audioTracks[a]
+            for (var ac = 0; ac < aTrack.clips.numItems; ac++) {
+              try {
+                aTrack.clips[ac].setSelected(false, false)
+              } catch (e) {
+                // Skip clips that can't be deselected
+              }
+            }
+          }
+        } catch (clearError) {
+          results.methods.push('Selection clear warning: ' + clearError.toString())
+        }
+
+        // Select only this clip
+        clip.setSelected(true, true)
+
+        // Execute delete command
+        var commandID = ripple ? 2850 : 88 // 2850 = Ripple Delete, 88 = Delete
+        app.executeCommand(commandID)
+
+        results.success = true
+        results.method = 'executeCommand'
+        results.methods.push('executeCommand - Success')
+        return results
+      }
+    }
+  } catch (cmdError) {
+    results.methods.push('executeCommand - Failed: ' + cmdError.toString())
+  }
+
+  // Method 3: Try QE DOM approach (last resort)
+  try {
+    if (app.enableQE() !== false) {
+      var qeSequence = qe.project.getActiveSequence()
+      var qeTrack = isVideo
+        ? qeSequence.getVideoTrackAt(trackIndex)
+        : qeSequence.getAudioTrackAt(trackIndex)
+
+      if (qeTrack && qeTrack.numItems > clipIndex) {
+        var qeClip = qeTrack.getItemAt(clipIndex)
+        if (qeClip) {
+          qeClip.remove(ripple, true)
+          results.success = true
+          results.method = 'QE DOM'
+          results.methods.push('QE DOM - Success')
+          return results
+        }
+      }
+    }
+  } catch (qeError) {
+    results.methods.push('QE DOM - Failed: ' + qeError.toString())
+  }
+
+  results.error = 'All methods failed: ' + results.methods.join(', ')
+  return results
+}
+
 /**
  * Helper function to log messages to the Premiere Pro console
  * @param {string} message - Message to log
@@ -10,6 +148,26 @@ function logMessage(message) {
     $.writeln('[Clean-Cut] ' + message)
   } catch (e) {
     // Silent fail if console logging isn't available
+  }
+}
+
+/**
+ * Simple test function to verify ExtendScript communication
+ * @returns {string} JSON string with test result
+ */
+function testExtendScriptConnection() {
+  try {
+    return JSON.stringify({
+      success: true,
+      message: 'ExtendScript communication is working!',
+      timestamp: new Date().getTime(),
+      premiereVersion: app.version || 'unknown'
+    })
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: 'Test error: ' + error.toString()
+    })
   }
 }
 
@@ -1570,5 +1728,655 @@ function createTempPresetFromEmbedded() {
     }
   } catch (e) {
     return null
+  }
+}
+
+/**
+ * ROBUST APPROACH: Removes the selected clip(s) but keeps the gap in the timeline
+ * Uses the robustDeleteClip function with multiple fallback methods
+ * @returns {string} JSON string with operation result
+ */
+function removeSelectedClipKeepGap() {
+  logMessage('=== RAZOR THROUGH ALL TRACKS: KEEP GAP ===')
+
+  try {
+    var sequence = app.project.activeSequence
+    if (!sequence) {
+      return JSON.stringify({
+        success: false,
+        error: 'No active sequence'
+      })
+    }
+
+    logMessage('Sequence: ' + sequence.name)
+
+    // Step 1: Find all selected clips and collect their time ranges
+    var selectedTimeRanges = []
+    var selectedClipsInfo = []
+
+    logMessage('Step 1: Collecting time ranges of selected clips...')
+
+    // Scan all tracks to find selected clips and their time ranges
+    for (var v = 0; v < sequence.videoTracks.numTracks; v++) {
+      var videoTrack = sequence.videoTracks[v]
+      for (var vc = 0; vc < videoTrack.clips.numItems; vc++) {
+        var clip = videoTrack.clips[vc]
+        if (clip && clip.isSelected()) {
+          var startTime = parseFloat(clip.start.seconds)
+          var endTime = parseFloat(clip.end.seconds)
+
+          selectedTimeRanges.push({
+            start: startTime,
+            end: endTime,
+            clipName: clip.name,
+            track: v + 1,
+            type: 'video'
+          })
+
+          logMessage(
+            'Found selected video clip: ' + clip.name + ' (' + startTime + 's to ' + endTime + 's)'
+          )
+        }
+      }
+    }
+
+    for (var a = 0; a < sequence.audioTracks.numTracks; a++) {
+      var audioTrack = sequence.audioTracks[a]
+      for (var ac = 0; ac < audioTrack.clips.numItems; ac++) {
+        var clip = audioTrack.clips[ac]
+        if (clip && clip.isSelected()) {
+          var startTime = parseFloat(clip.start.seconds)
+          var endTime = parseFloat(clip.end.seconds)
+
+          selectedTimeRanges.push({
+            start: startTime,
+            end: endTime,
+            clipName: clip.name,
+            track: a + 1,
+            type: 'audio'
+          })
+
+          logMessage(
+            'Found selected audio clip: ' + clip.name + ' (' + startTime + 's to ' + endTime + 's)'
+          )
+        }
+      }
+    }
+
+    if (selectedTimeRanges.length === 0) {
+      return JSON.stringify({
+        success: false,
+        message: 'No selected clips found'
+      })
+    }
+
+    logMessage('Found ' + selectedTimeRanges.length + ' selected clips total')
+
+    // Step 2: For each time range, remove ALL clips in that range across ALL tracks (keep gaps)
+    var clipsRemoved = 0
+    var allMethods = []
+
+    logMessage(
+      'Step 2: Removing all clips in selected time ranges across all tracks (keeping gaps)...'
+    )
+
+    for (var i = 0; i < selectedTimeRanges.length; i++) {
+      var timeRange = selectedTimeRanges[i]
+      var rangeStart = timeRange.start
+      var rangeEnd = timeRange.end
+
+      logMessage('Processing time range: ' + rangeStart + 's to ' + rangeEnd + 's')
+
+      // Remove clips in this time range from ALL video tracks
+      for (var v = 0; v < sequence.videoTracks.numTracks; v++) {
+        var videoTrack = sequence.videoTracks[v]
+
+        for (var vc = videoTrack.clips.numItems - 1; vc >= 0; vc--) {
+          var clip = videoTrack.clips[vc]
+          if (clip) {
+            var clipStart = parseFloat(clip.start.seconds)
+            var clipEnd = parseFloat(clip.end.seconds)
+
+            // Check if this clip actually overlaps with our target time range
+            // Only remove clips that have meaningful overlap (not just touching boundaries)
+            var tolerance = 0.001 // 1ms tolerance for floating point precision
+            if (clipStart < rangeEnd - tolerance && clipEnd > rangeStart + tolerance) {
+              logMessage('Removing overlapping video clip: ' + clip.name + ' on track ' + (v + 1))
+
+              var result = robustDeleteClip(v, vc, true, false) // video, keep gap
+              allMethods = allMethods.concat(result.methods)
+
+              if (result.success) {
+                clipsRemoved++
+                selectedClipsInfo.push({
+                  track: v + 1,
+                  type: 'video',
+                  name: clip.name,
+                  method: result.method,
+                  timeRange: rangeStart + 's-' + rangeEnd + 's'
+                })
+                logMessage(
+                  'Successfully removed video clip: ' + clip.name + ' using ' + result.method
+                )
+              } else {
+                logMessage('Failed to remove video clip: ' + result.error)
+              }
+            }
+          }
+        }
+      }
+
+      // Remove clips in this time range from ALL audio tracks
+      for (var a = 0; a < sequence.audioTracks.numTracks; a++) {
+        var audioTrack = sequence.audioTracks[a]
+
+        for (var ac = audioTrack.clips.numItems - 1; ac >= 0; ac--) {
+          var clip = audioTrack.clips[ac]
+          if (clip) {
+            var clipStart = parseFloat(clip.start.seconds)
+            var clipEnd = parseFloat(clip.end.seconds)
+
+            // Check if this clip actually overlaps with our target time range
+            // Only remove clips that have meaningful overlap (not just touching boundaries)
+            var tolerance = 0.001 // 1ms tolerance for floating point precision
+            if (clipStart < rangeEnd - tolerance && clipEnd > rangeStart + tolerance) {
+              logMessage('Removing overlapping audio clip: ' + clip.name + ' on track ' + (a + 1))
+
+              var result = robustDeleteClip(a, ac, false, false) // audio, keep gap
+              allMethods = allMethods.concat(result.methods)
+
+              if (result.success) {
+                clipsRemoved++
+                selectedClipsInfo.push({
+                  track: a + 1,
+                  type: 'audio',
+                  name: clip.name,
+                  method: result.method,
+                  timeRange: rangeStart + 's-' + rangeEnd + 's'
+                })
+                logMessage(
+                  'Successfully removed audio clip: ' + clip.name + ' using ' + result.method
+                )
+              } else {
+                logMessage('Failed to remove audio clip: ' + result.error)
+              }
+            }
+          }
+        }
+      }
+    }
+
+    var message =
+      clipsRemoved > 0
+        ? 'Removed ' +
+          clipsRemoved +
+          ' clip(s) with gaps preserved across all tracks in ' +
+          selectedTimeRanges.length +
+          ' time range(s)'
+        : 'No clips found to remove'
+
+    logMessage('Remove with gap operation completed: ' + message)
+
+    return JSON.stringify({
+      success: clipsRemoved > 0,
+      message: message,
+      clipsRemoved: clipsRemoved,
+      timeRangesProcessed: selectedTimeRanges.length,
+      selectedClips: selectedClipsInfo,
+      methods: allMethods
+    })
+  } catch (error) {
+    logMessage('MAIN CATCH ERROR in removeSelectedClipKeepGap: ' + error.toString())
+    return JSON.stringify({
+      success: false,
+      error: 'Operation failed: ' + error.toString()
+    })
+  }
+}
+
+/**
+ * Safe clip removal function using index-based selection and executeCommand
+ */
+function safeRemoveClipByLocation(clipName, startTime, endTime, options) {
+  options = options || {}
+  var ripple = !!options.ripple
+  var sequence = app.project.activeSequence
+
+  logMessage('safeRemoveClipByLocation: ' + clipName + ', ripple=' + ripple)
+
+  if (!sequence) {
+    return { success: false, error: 'No active sequence' }
+  }
+
+  // Clear any previous selection and find the target clip
+  try {
+    logMessage('Clearing selection and searching for clip...')
+    sequence.clearSelection()
+
+    var clipFound = false
+
+    // Check video tracks
+    for (var v = 0; v < sequence.videoTracks.numTracks && !clipFound; v++) {
+      var videoTrack = sequence.videoTracks[v]
+      for (var vc = 0; vc < videoTrack.clips.numItems; vc++) {
+        var clip = videoTrack.clips[vc]
+        if (clip && clip.name === clipName) {
+          var clipStart = parseFloat(clip.start.seconds)
+          var clipEnd = parseFloat(clip.end.seconds)
+
+          if (Math.abs(clipStart - startTime) < 0.1 && Math.abs(clipEnd - endTime) < 0.1) {
+            logMessage('Found video clip at track ' + v + ', index ' + vc)
+            clip.setSelected(true, true)
+            clipFound = true
+            break
+          }
+        }
+      }
+    }
+
+    // Check audio tracks if not found in video
+    for (var a = 0; a < sequence.audioTracks.numTracks && !clipFound; a++) {
+      var audioTrack = sequence.audioTracks[a]
+      for (var ac = 0; ac < audioTrack.clips.numItems; ac++) {
+        var clip = audioTrack.clips[ac]
+        if (clip && clip.name === clipName) {
+          var clipStart = parseFloat(clip.start.seconds)
+          var clipEnd = parseFloat(clip.end.seconds)
+
+          if (Math.abs(clipStart - startTime) < 0.1 && Math.abs(clipEnd - endTime) < 0.1) {
+            logMessage('Found audio clip at track ' + a + ', index ' + ac)
+            clip.setSelected(true, true)
+            clipFound = true
+            break
+          }
+        }
+      }
+    }
+
+    if (!clipFound) {
+      return { success: false, error: 'Could not find clip: ' + clipName }
+    }
+
+    // Execute the appropriate delete command
+    var deleteCommand = ripple ? 'Ripple Delete' : 'Clear'
+    logMessage('Executing command: ' + deleteCommand)
+
+    var commandId = app.findMenuCommandId(deleteCommand)
+    logMessage('Command ID: ' + commandId)
+
+    if (commandId && commandId > 0) {
+      app.executeCommand(commandId)
+      return { success: true, method: 'executeCommand (' + deleteCommand + ')' }
+    } else {
+      return { success: false, error: 'Command not found: ' + deleteCommand }
+    }
+  } catch (error) {
+    logMessage('safeRemoveClipByLocation error: ' + error.toString())
+    return { success: false, error: error.toString() }
+  }
+}
+
+/**
+ * RAZOR APPROACH: Removes clips across ALL tracks at selected time ranges (like razor through all tracks)
+ * Uses the robustDeleteClip function with multiple fallback methods
+ * @returns {string} JSON string with operation result
+ */
+function removeSelectedClipRipple() {
+  logMessage('=== RIPPLE DELETE SELECTED CLIPS ===')
+
+  try {
+    var sequence = app.project.activeSequence
+    if (!sequence) {
+      return JSON.stringify({
+        success: false,
+        error: 'No active sequence'
+      })
+    }
+
+    logMessage('Sequence: ' + sequence.name)
+
+    // Step 1: Find all selected clips and collect their exact positions (track + index)
+    var selectedClips = []
+
+    logMessage('Step 1: Collecting selected clips...')
+
+    // Scan all tracks to find selected clips and their positions
+    for (var v = 0; v < sequence.videoTracks.numTracks; v++) {
+      var videoTrack = sequence.videoTracks[v]
+      for (var vc = 0; vc < videoTrack.clips.numItems; vc++) {
+        var clip = videoTrack.clips[vc]
+        if (clip && clip.isSelected()) {
+          selectedClips.push({
+            trackIndex: v,
+            clipIndex: vc,
+            isVideo: true,
+            name: clip.name,
+            startTime: parseFloat(clip.start.seconds),
+            endTime: parseFloat(clip.end.seconds)
+          })
+
+          logMessage(
+            'Found selected video clip: ' + clip.name + ' (track ' + (v + 1) + ', index ' + vc + ')'
+          )
+        }
+      }
+    }
+
+    for (var a = 0; a < sequence.audioTracks.numTracks; a++) {
+      var audioTrack = sequence.audioTracks[a]
+      for (var ac = 0; ac < audioTrack.clips.numItems; ac++) {
+        var clip = audioTrack.clips[ac]
+        if (clip && clip.isSelected()) {
+          selectedClips.push({
+            trackIndex: a,
+            clipIndex: ac,
+            isVideo: false,
+            name: clip.name,
+            startTime: parseFloat(clip.start.seconds),
+            endTime: parseFloat(clip.end.seconds)
+          })
+
+          logMessage(
+            'Found selected audio clip: ' + clip.name + ' (track ' + (a + 1) + ', index ' + ac + ')'
+          )
+        }
+      }
+    }
+
+    if (selectedClips.length === 0) {
+      return JSON.stringify({
+        success: false,
+        message: 'No selected clips found'
+      })
+    }
+
+    logMessage('Found ' + selectedClips.length + ' selected clips total')
+
+    // Sort clips by start time (latest first) to prevent index shifting issues
+    selectedClips.sort(function (a, b) {
+      return b.startTime - a.startTime // Sort in descending order (latest first)
+    })
+
+    logMessage('Sorted clips from latest to earliest to prevent index shifting')
+
+    // Step 2: Delete only the originally selected clips
+    var clipsRemoved = 0
+    var allMethods = []
+    var selectedClipsInfo = []
+
+    logMessage('Step 2: Ripple deleting originally selected clips only...')
+
+    for (var i = 0; i < selectedClips.length; i++) {
+      var clipInfo = selectedClips[i]
+
+      logMessage(
+        'Processing clip: ' +
+          clipInfo.name +
+          ' (track ' +
+          (clipInfo.trackIndex + 1) +
+          ', index ' +
+          clipInfo.clipIndex +
+          ', ' +
+          (clipInfo.isVideo ? 'video' : 'audio') +
+          ')'
+      )
+
+      var result = robustDeleteClip(
+        clipInfo.trackIndex,
+        clipInfo.clipIndex,
+        clipInfo.isVideo,
+        true // ripple delete
+      )
+
+      allMethods = allMethods.concat(result.methods)
+
+      if (result.success) {
+        clipsRemoved++
+        selectedClipsInfo.push({
+          track: clipInfo.trackIndex + 1,
+          type: clipInfo.isVideo ? 'video' : 'audio',
+          name: clipInfo.name,
+          method: result.method,
+          timeRange: clipInfo.startTime + 's-' + clipInfo.endTime + 's'
+        })
+        logMessage('Successfully ripple deleted clip: ' + clipInfo.name + ' using ' + result.method)
+      } else {
+        logMessage('Failed to ripple delete clip: ' + clipInfo.name + ' - ' + result.error)
+      }
+    }
+
+    var message =
+      clipsRemoved > 0
+        ? 'Ripple deleted ' + clipsRemoved + ' selected clip(s)'
+        : 'No clips were removed'
+
+    logMessage('Ripple delete operation completed: ' + message)
+
+    return JSON.stringify({
+      success: clipsRemoved > 0,
+      message: message,
+      clipsRemoved: clipsRemoved,
+      totalSelected: selectedClips.length,
+      selectedClips: selectedClipsInfo,
+      methods: allMethods
+    })
+  } catch (error) {
+    logMessage('MAIN CATCH ERROR in removeSelectedClipRipple: ' + error.toString())
+    return JSON.stringify({
+      success: false,
+      error: 'Operation failed: ' + error.toString()
+    })
+  }
+}
+
+/**
+ * Mutes the selected clip(s)
+ * @returns {string} JSON string with operation result
+ */
+function muteSelectedClip() {
+  try {
+    if (!app.project || !app.project.activeSequence) {
+      return JSON.stringify({
+        success: false,
+        error: 'No active sequence'
+      })
+    }
+
+    var sequence = app.project.activeSequence
+    logMessage('Starting mute selected clips operation...')
+
+    // First check if there are any selected clips using the same method as getActiveSequenceInfo
+    var selection = sequence.getSelection()
+    if (!selection || selection.length === 0) {
+      return JSON.stringify({
+        success: false,
+        error: 'No clips are currently selected'
+      })
+    }
+
+    logMessage('Found ' + selection.length + ' selected clip(s)')
+
+    // Try to mute clips using opacity/volume control based on research
+    var clipsMuted = 0
+    var selectedClipsInfo = []
+
+    // Process each selected clip using timing information
+    for (var i = 0; i < selection.length; i++) {
+      var selectedClip = selection[i]
+      var clipName = selectedClip.name || 'Unknown Clip'
+      var mediaType = selectedClip.mediaType || 'Unknown'
+      var startTime = parseFloat(selectedClip.start.seconds)
+      var endTime = parseFloat(selectedClip.end.seconds)
+
+      logMessage(
+        'Processing selected clip for muting: ' +
+          clipName +
+          ' (' +
+          mediaType +
+          ', ' +
+          startTime +
+          's to ' +
+          endTime +
+          's)'
+      )
+
+      try {
+        var found = false
+        var isVideo = mediaType === 'Video'
+        var isAudio = mediaType === 'Audio'
+
+        // Search for the clip in the appropriate tracks using standard DOM
+        if (isVideo || mediaType === 'Unknown') {
+          // Check video tracks
+          for (var v = 0; v < sequence.videoTracks.numTracks && !found; v++) {
+            var videoTrack = sequence.videoTracks[v]
+            for (var vc = 0; vc < videoTrack.clips.numItems; vc++) {
+              var clip = videoTrack.clips[vc]
+              if (clip && clip.name === clipName) {
+                // Verify timing matches (within 0.1s tolerance)
+                var clipStart = parseFloat(clip.start.seconds)
+                var clipEnd = parseFloat(clip.end.seconds)
+
+                if (Math.abs(clipStart - startTime) < 0.1 && Math.abs(clipEnd - endTime) < 0.1) {
+                  selectedClipsInfo.push({
+                    track: v + 1,
+                    type: 'video',
+                    name: clipName
+                  })
+
+                  // Mute video by setting opacity to 0
+                  if (clip.components && clip.components.numItems > 0) {
+                    try {
+                      // Component 0 is usually opacity for video clips
+                      var opacityComponent = clip.components[0]
+                      if (
+                        opacityComponent &&
+                        opacityComponent.properties &&
+                        opacityComponent.properties.numItems > 0
+                      ) {
+                        opacityComponent.properties[0].setValue(0.0) // 0% opacity
+                        clipsMuted++
+                        logMessage(
+                          'Muted video clip by setting opacity to 0: ' +
+                            clipName +
+                            ' on track ' +
+                            (v + 1)
+                        )
+                        found = true
+                        break
+                      }
+                    } catch (opacityError) {
+                      logMessage('Could not set opacity for video clip: ' + opacityError.toString())
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        if (isAudio || (mediaType === 'Unknown' && !found)) {
+          // Check audio tracks
+          for (var a = 0; a < sequence.audioTracks.numTracks && !found; a++) {
+            var audioTrack = sequence.audioTracks[a]
+            for (var ac = 0; ac < audioTrack.clips.numItems; ac++) {
+              var clip = audioTrack.clips[ac]
+              if (clip && clip.name === clipName) {
+                // Verify timing matches (within 0.1s tolerance)
+                var clipStart = parseFloat(clip.start.seconds)
+                var clipEnd = parseFloat(clip.end.seconds)
+
+                if (Math.abs(clipStart - startTime) < 0.1 && Math.abs(clipEnd - endTime) < 0.1) {
+                  selectedClipsInfo.push({
+                    track: a + 1,
+                    type: 'audio',
+                    name: clipName
+                  })
+
+                  // Mute audio by setting volume to 0
+                  if (clip.components && clip.components.numItems > 0) {
+                    try {
+                      // Look for Volume component
+                      var volumeFound = false
+                      for (var c = 0; c < clip.components.numItems; c++) {
+                        var component = clip.components[c]
+                        if (
+                          component &&
+                          (component.displayName === 'Volume' ||
+                            component.displayName === 'Audio Levels')
+                        ) {
+                          if (component.properties && component.properties.numItems > 0) {
+                            component.properties[0].setValue(0.0) // 0% volume
+                            clipsMuted++
+                            logMessage(
+                              'Muted audio clip by setting volume to 0: ' +
+                                clipName +
+                                ' on track ' +
+                                (a + 1)
+                            )
+                            volumeFound = true
+                            found = true
+                            break
+                          }
+                        }
+                      }
+
+                      // Fallback: try first component if no Volume component found
+                      if (!volumeFound && clip.components.numItems > 0) {
+                        var firstComponent = clip.components[0]
+                        if (
+                          firstComponent &&
+                          firstComponent.properties &&
+                          firstComponent.properties.numItems > 0
+                        ) {
+                          firstComponent.properties[0].setValue(0.0)
+                          clipsMuted++
+                          logMessage(
+                            'Muted audio clip using first component: ' +
+                              clipName +
+                              ' on track ' +
+                              (a + 1)
+                          )
+                          found = true
+                        }
+                      }
+                    } catch (volumeError) {
+                      logMessage('Could not set volume for audio clip: ' + volumeError.toString())
+                    }
+                  }
+                  break
+                }
+              }
+            }
+          }
+        }
+
+        if (!found) {
+          logMessage('Could not find or mute clip: ' + clipName)
+        }
+      } catch (clipError) {
+        logMessage('Error processing clip ' + clipName + ': ' + clipError.toString())
+      }
+    }
+
+    if (clipsMuted === 0) {
+      return JSON.stringify({
+        success: false,
+        error: 'Selected clips could not be muted (no compatible properties found)'
+      })
+    }
+
+    return JSON.stringify({
+      success: true,
+      message: 'Muted ' + clipsMuted + ' out of ' + selection.length + ' selected clip(s)',
+      clipsMuted: clipsMuted,
+      totalSelected: selection.length,
+      selectedClips: selectedClipsInfo
+    })
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: 'Mute operation error: ' + error.toString()
+    })
   }
 }
