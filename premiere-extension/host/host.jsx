@@ -1518,120 +1518,150 @@ function removeSelectedClipRipple() {
 }
 
 /**
- * Mutes the selected clips by setting opacity/volume to 0
+ * Mutes the selected clips by setting audio volume to -∞ dB and video opacity to 0
  * @returns {string} JSON string with operation result
  */
 function muteSelectedClip() {
   try {
     var sequence = app.project.activeSequence
     if (!sequence) {
-      return JSON.stringify({ success: false, error: 'No active sequence' })
-    }
-
-    var selection = sequence.getSelection()
-    if (!selection || selection.length === 0) {
-      return JSON.stringify({ success: false, error: 'No clips are currently selected' })
-    }
-
-    var clipsMuted = 0
-    var results = []
-
-    for (var i = 0; i < selection.length; i++) {
-      var selectedClip = selection[i]
-      var clipName = selectedClip.name || 'Unknown Clip'
-      var mediaType = selectedClip.mediaType || 'Unknown'
-      var startTime = parseFloat(selectedClip.start.seconds)
-      var endTime = parseFloat(selectedClip.end.seconds)
-
-      var found = false
-
-      // Find and mute video clips (set opacity to 0)
-      if (mediaType === 'Video' || mediaType === 'Unknown') {
-        for (var v = 0; v < sequence.videoTracks.numTracks && !found; v++) {
-          var videoTrack = sequence.videoTracks[v]
-          for (var vc = 0; vc < videoTrack.clips.numItems; vc++) {
-            var clip = videoTrack.clips[vc]
-            if (clip && clip.name === clipName) {
-              var clipStart = parseFloat(clip.start.seconds)
-              var clipEnd = parseFloat(clip.end.seconds)
-
-              if (Math.abs(clipStart - startTime) < 0.1 && Math.abs(clipEnd - endTime) < 0.1) {
-                if (clip.components && clip.components.numItems > 0) {
-                  try {
-                    clip.components[0].properties[0].setValue(0.0) // Set opacity to 0%
-                    clipsMuted++
-                    results.push({ track: v + 1, type: 'video', name: clipName })
-                    found = true
-                    break
-                  } catch (e) {}
-                }
-              }
-            }
-          }
-        }
-      }
-
-      // Find and mute audio clips (set volume to 0)
-      if ((mediaType === 'Audio' || mediaType === 'Unknown') && !found) {
-        for (var a = 0; a < sequence.audioTracks.numTracks && !found; a++) {
-          var audioTrack = sequence.audioTracks[a]
-          for (var ac = 0; ac < audioTrack.clips.numItems; ac++) {
-            var clip = audioTrack.clips[ac]
-            if (clip && clip.name === clipName) {
-              var clipStart = parseFloat(clip.start.seconds)
-              var clipEnd = parseFloat(clip.end.seconds)
-
-              if (Math.abs(clipStart - startTime) < 0.1 && Math.abs(clipEnd - endTime) < 0.1) {
-                if (clip.components && clip.components.numItems > 0) {
-                  try {
-                    // Try to find Volume component, otherwise use first component
-                    var volumeComponent = null
-                    for (var c = 0; c < clip.components.numItems; c++) {
-                      var component = clip.components[c]
-                      if (
-                        component &&
-                        (component.displayName === 'Volume' ||
-                          component.displayName === 'Audio Levels')
-                      ) {
-                        volumeComponent = component
-                        break
-                      }
-                    }
-
-                    var targetComponent = volumeComponent || clip.components[0]
-                    if (
-                      targetComponent &&
-                      targetComponent.properties &&
-                      targetComponent.properties.numItems > 0
-                    ) {
-                      targetComponent.properties[0].setValue(0.0) // Set volume to 0%
-                      clipsMuted++
-                      results.push({ track: a + 1, type: 'audio', name: clipName })
-                      found = true
-                    }
-                    break
-                  } catch (e) {}
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    if (clipsMuted === 0) {
       return JSON.stringify({
         success: false,
-        error: 'Selected clips could not be muted (no compatible properties found)'
+        error: 'No active sequence'
       })
     }
 
+    var clipsMuted = 0
+    var selectedClipsInfo = []
+
+    // Helper function to convert dB to internal float value
+    function dbToFloat(dbValue) {
+      if (dbValue === -Infinity || dbValue <= -100) {
+        return 0.0 // Negative infinity = 0.0 (complete silence)
+      }
+      // Premiere Pro uses an offset of 15 for dB conversion
+      return Math.pow(10, (dbValue - 15) / 20)
+    }
+
+    // Check video tracks for selected clips
+    for (var v = 0; v < sequence.videoTracks.numTracks; v++) {
+      var videoTrack = sequence.videoTracks[v]
+
+      for (var vc = 0; vc < videoTrack.clips.numItems; vc++) {
+        var clip = videoTrack.clips[vc]
+
+        if (clip && clip.isSelected()) {
+          selectedClipsInfo.push({
+            track: v + 1,
+            type: 'video',
+            name: clip.name
+          })
+
+          // For video clips, we mute by setting opacity to 0 (visual muting)
+          // This keeps the clip functional but invisible
+          if (clip.components && clip.components.numItems > 0) {
+            try {
+              var opacityComponent = clip.components[0] // Usually opacity
+              if (
+                opacityComponent &&
+                opacityComponent.properties &&
+                opacityComponent.properties.numItems > 0
+              ) {
+                opacityComponent.properties[0].setValue(0.0) // 0% opacity
+                clipsMuted++
+                logMessage('Muted video clip by setting opacity to 0: ' + clip.name)
+              }
+            } catch (opacityError) {
+              logMessage('Could not mute video clip: ' + opacityError.toString())
+            }
+          }
+        }
+      }
+    }
+
+    // Check audio tracks for selected clips
+    for (var a = 0; a < sequence.audioTracks.numTracks; a++) {
+      var audioTrack = sequence.audioTracks[a]
+
+      for (var ac = 0; ac < audioTrack.clips.numItems; ac++) {
+        var clip = audioTrack.clips[ac]
+
+        if (clip && clip.isSelected()) {
+          selectedClipsInfo.push({
+            track: a + 1,
+            type: 'audio',
+            name: clip.name
+          })
+
+          // For audio clips, mute by setting volume to -∞ dB (0.0 float)
+          if (clip.components && clip.components.numItems > 0) {
+            try {
+              var volumeFound = false
+
+              // Look for the Volume component specifically
+              for (var c = 0; c < clip.components.numItems; c++) {
+                var component = clip.components[c]
+                if (
+                  component &&
+                  (component.displayName === 'Volume' ||
+                    component.displayName === 'Audio Levels' ||
+                    component.displayName === 'Channel Volume')
+                ) {
+                  if (component.properties && component.properties.numItems > 0) {
+                    // Find the Level property (usually index 1, not 0)
+                    var levelProperty = component.properties[1] || component.properties[0]
+                    if (levelProperty) {
+                      // Set to 0.0 which equals -∞ dB (complete silence)
+                      levelProperty.setValue(0.0)
+                      clipsMuted++
+                      logMessage('Muted audio clip by setting volume to -∞ dB: ' + clip.name)
+                      volumeFound = true
+                      break
+                    }
+                  }
+                }
+              }
+
+              // Fallback: If no Volume component found, try first component
+              if (!volumeFound && clip.components.numItems > 0) {
+                var firstComponent = clip.components[0]
+                if (
+                  firstComponent &&
+                  firstComponent.properties &&
+                  firstComponent.properties.numItems > 1
+                ) {
+                  // Audio clips typically have Level property at index 1
+                  var levelProperty = firstComponent.properties[1]
+                  if (levelProperty) {
+                    levelProperty.setValue(0.0) // -∞ dB
+                    clipsMuted++
+                    logMessage(
+                      'Muted audio clip using first component level property: ' + clip.name
+                    )
+                    volumeFound = true
+                  }
+                }
+              }
+
+              if (!volumeFound) {
+                logMessage('Could not find volume property for audio clip: ' + clip.name)
+              }
+            } catch (volumeError) {
+              logMessage('Could not mute audio clip: ' + volumeError.toString())
+            }
+          }
+        }
+      }
+    }
+
     return JSON.stringify({
-      success: true,
-      message: 'Muted ' + clipsMuted + ' out of ' + selection.length + ' selected clip(s)',
+      success: clipsMuted > 0,
+      message:
+        clipsMuted > 0
+          ? 'Muted audio on ' + clipsMuted + ' selected clip(s)'
+          : 'No selected clips found or could not mute any clips',
       clipsMuted: clipsMuted,
-      totalSelected: selection.length,
-      selectedClips: results
+      selectedClips: selectedClipsInfo
     })
   } catch (error) {
     return JSON.stringify({
