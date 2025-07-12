@@ -71,7 +71,7 @@ interface RemoveSilencesButtonProps {
   selectedRange: 'entire' | 'inout' | 'selected'
   sequenceInfo: SequenceInfo | null
   premiereConnected: boolean
-  silenceManagement: 'remove' | 'keep'
+  silenceManagement: 'remove' | 'keep' | 'mute'
 
   // Callback functions
   onStatusUpdate: (status: string) => void
@@ -137,32 +137,58 @@ function RemoveSilencesButton({
   }, [pendingDeletion, currentSession])
 
   const proceedWithDeletion = async (sessionId: string) => {
-    console.log('Proceeding with deletion for session:', sessionId)
-    onStatusUpdate('Deleting silence segments...')
+    console.log('Proceeding with post-processing for session:', sessionId)
 
-    try {
-      const deleteResult = await window.cleanCutAPI.deleteSilenceSegments(sessionId)
+    if (silenceManagement === 'remove') {
+      onStatusUpdate('Deleting silence segments...')
 
-      if (deleteResult.success) {
-        const successMessage = `Silence processing completed successfully!
+      try {
+        const deleteResult = await window.cleanCutAPI.deleteSilenceSegments(sessionId)
+
+        if (deleteResult.success) {
+          const successMessage = `Silence processing completed successfully!
 Found and removed ${deleteResult.deletedSegments || 'multiple'} silence segments from the timeline.`
-        onStatusUpdate(successMessage)
-        onSuccess?.(successMessage)
-      } else {
-        const errorMessage = `Silence processing completed, but deletion failed: ${deleteResult.error || 'Unknown error'}`
-        onStatusUpdate(errorMessage)
-        onError?.(errorMessage)
+          onStatusUpdate(successMessage)
+          onSuccess?.(successMessage)
+        } else {
+          const errorMessage = `Silence processing completed, but deletion failed: ${deleteResult.error || 'Unknown error'}`
+          onStatusUpdate(errorMessage)
+          onError?.(errorMessage)
+        }
+      } catch (deleteError) {
+        console.error('Deletion error:', deleteError)
+        const errorMsg = `Silence processing completed, but deletion failed: ${deleteError}`
+        onStatusUpdate(errorMsg)
+        onError?.(errorMsg)
       }
-    } catch (deleteError) {
-      console.error('Deletion error:', deleteError)
-      const errorMsg = `Silence processing completed, but deletion failed: ${deleteError}`
-      onStatusUpdate(errorMsg)
-      onError?.(errorMsg)
-    } finally {
-      setIsProcessing(false)
-      setCurrentSession(null)
-      setPendingDeletion(false)
+    } else if (silenceManagement === 'mute') {
+      onStatusUpdate('Muting silence segments...')
+
+      try {
+        const muteResult = await window.cleanCutAPI.muteSilenceSegments(sessionId)
+
+        if (muteResult.success) {
+          const successMessage = `Silence processing completed successfully!
+Found and muted ${muteResult.mutedSegments || 'multiple'} silence segments in the timeline.`
+          onStatusUpdate(successMessage)
+          onSuccess?.(successMessage)
+        } else {
+          const errorMessage = `Silence processing completed, but muting failed: ${muteResult.error || 'Unknown error'}`
+          onStatusUpdate(errorMessage)
+          onError?.(errorMessage)
+        }
+      } catch (muteError) {
+        console.error('Muting error:', muteError)
+        const errorMsg = `Silence processing completed, but muting failed: ${muteError}`
+        onStatusUpdate(errorMsg)
+        onError?.(errorMsg)
+      }
     }
+
+    // Always clean up at the end
+    setIsProcessing(false)
+    setCurrentSession(null)
+    setPendingDeletion(false)
   }
 
   const handleProcessFromPremiere = async () => {
@@ -237,6 +263,10 @@ Found and removed ${deleteResult.deletedSegments || 'multiple'} silence segments
             // User wants to remove silences - wait for segments to be processed, then delete
             onStatusUpdate('Silence processing completed! Waiting for timeline cuts to finish...')
             setPendingDeletion(true)
+          } else if (silenceManagement === 'mute') {
+            // User wants to mute silences - wait for segments to be processed, then mute
+            onStatusUpdate('Silence processing completed! Waiting for timeline cuts to finish...')
+            setPendingDeletion(true) // We'll reuse this for muting workflow
           } else {
             // User wants to keep silences - just cut without deleting
             const successMessage = `Silence processing completed!
@@ -280,6 +310,8 @@ Silence segments have been preserved as requested.`
 
     if (silenceManagement === 'remove') {
       return 'Find & Remove Silences'
+    } else if (silenceManagement === 'mute') {
+      return 'Find & Mute Silences'
     } else {
       return 'Find & Cut at Silences'
     }

@@ -130,10 +130,20 @@ declare global {
         segmentIds?: string[]
       ) => Promise<{
         success: boolean
-        message: string
+        message?: string
+        error?: string
         deletedSegments?: number
         sessionId?: string
+      }>
+      muteSilenceSegments: (
+        sessionId?: string,
+        segmentIds?: string[]
+      ) => Promise<{
+        success: boolean
+        message?: string
         error?: string
+        mutedSegments?: number
+        sessionId?: string
       }>
       clearSilenceSessions: () => Promise<{
         success: boolean

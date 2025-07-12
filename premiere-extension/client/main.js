@@ -729,6 +729,31 @@ function connect() {
             }
             break
 
+          case 'request_mute_silences':
+            // Handle silence muting request
+            addLogEntry(
+              `Received mute silences request for ${message.payload.length} segments`,
+              'info'
+            )
+
+            // Convert silence segments to clip selection and muting
+            const muteResult = cs.evalScript(
+              `muteSilenceSegments('${JSON.stringify(message.payload)}')`
+            )
+            addLogEntry(`Mute silences result: ${muteResult}`, 'info')
+
+            // Send response back to confirm muting
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(
+                JSON.stringify({
+                  type: 'mute_silences_response',
+                  payload: muteResult,
+                  sessionId: message.sessionId
+                })
+              )
+            }
+            break
+
           case 'request_sequence_info':
             console.log('Received request for sequence info')
             addLogEntry('Received sequence info request', 'info')

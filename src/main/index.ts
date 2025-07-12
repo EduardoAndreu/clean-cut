@@ -597,6 +597,65 @@ app.whenReady().then(() => {
     }
   )
 
+  // Handler for muting silence segments
+  ipcMain.handle('mute-silence-segments', async (_, sessionId?: string, segmentIds?: string[]) => {
+    if (!premiereSocket) {
+      throw new Error('Premiere Pro is not connected.')
+    }
+
+    const targetSessionId = sessionId || currentSilenceSession?.id
+    if (!targetSessionId) {
+      throw new Error('No active silence session found.')
+    }
+
+    const session = sessionId ? silenceSessionHistory.get(sessionId) : currentSilenceSession
+    if (!session) {
+      throw new Error('Silence session not found.')
+    }
+
+    // Get deletable segments (processed but not deleted)
+    const mutableSegments = getDeletableSilenceSegments(targetSessionId)
+
+    // If no specific segment IDs provided, mute all mutable segments
+    const segmentsToMute = segmentIds
+      ? mutableSegments.filter((segment) => segmentIds.includes(segment.id))
+      : mutableSegments
+
+    if (segmentsToMute.length === 0) {
+      throw new Error('No mutable silence segments found.')
+    }
+
+    // Send mute request to Premiere Pro
+    const muteCommands = segmentsToMute.map((segment) => ({
+      start: segment.start,
+      end: segment.end,
+      id: segment.id
+    }))
+
+    premiereSocket.send(
+      JSON.stringify({
+        type: 'request_mute_silences',
+        payload: muteCommands,
+        sessionId: targetSessionId
+      })
+    )
+
+    console.log('Sent mute silence requests to Premiere:', muteCommands)
+
+    // Mark segments as processed (muted)
+    markSegmentsAsDeleted(
+      targetSessionId,
+      segmentsToMute.map((s) => s.id)
+    )
+
+    return {
+      success: true,
+      message: `Mute request sent for ${segmentsToMute.length} silence segments.`,
+      mutedSegments: segmentsToMute.length,
+      sessionId: targetSessionId
+    }
+  })
+
   // Handler for clearing silence sessions
   ipcMain.handle('clear-silence-sessions', async () => {
     currentSilenceSession = null
@@ -909,6 +968,19 @@ app.whenReady().then(() => {
 
             // Notify renderer about deletion completion
             safelyNotifyRenderer('silence-deletion-completed', {
+              sessionId:
+                parsedMessage.sessionId ||
+                (currentSilenceSession ? currentSilenceSession.id : null),
+              result: parsedMessage.payload
+            })
+            break
+
+          case 'mute_silences_response':
+            // Handle response from Premiere Pro after silence muting
+            console.log('Received mute silences response from Premiere:', parsedMessage.payload)
+
+            // Notify renderer about muting completion
+            safelyNotifyRenderer('silence-muting-completed', {
               sessionId:
                 parsedMessage.sessionId ||
                 (currentSilenceSession ? currentSilenceSession.id : null),

@@ -1865,6 +1865,296 @@ function muteSelectedClip() {
   }
 }
 
+/**
+ * Identifies and mutes silence segments based on audio level analysis
+ * @param {string} segmentsJSON - JSON string of silence segments with start/end times
+ * @returns {string} JSON string with operation result
+ */
+function muteSilenceSegments(segmentsJSON) {
+  try {
+    var sequence = app.project.activeSequence
+    if (!sequence) {
+      return JSON.stringify({ success: false, error: 'No active sequence' })
+    }
+
+    var segments
+    try {
+      segments = JSON.parse(segmentsJSON)
+    } catch (parseError) {
+      return JSON.stringify({
+        success: false,
+        error: 'Invalid segments JSON: ' + parseError.toString()
+      })
+    }
+
+    if (!segments || segments.length === 0) {
+      return JSON.stringify({
+        success: false,
+        error: 'No silence segments provided'
+      })
+    }
+
+    logMessage('Identifying silence clips for muting...')
+    logMessage('Segments to mute: ' + segments.length)
+
+    var clipsToMute = []
+    var tolerance = 0.05 // 50ms tolerance for time matching
+
+    // Search through all tracks to find clips that match our silence segments
+    for (var s = 0; s < segments.length; s++) {
+      var segment = segments[s]
+      var segmentStart = segment.start
+      var segmentEnd = segment.end
+      var segmentDuration = segmentEnd - segmentStart
+
+      logMessage(
+        'Looking for silence segment: ' +
+          segmentStart +
+          's to ' +
+          segmentEnd +
+          's (duration: ' +
+          segmentDuration +
+          's)'
+      )
+
+      // Only process segments that are likely to be silence (longer than 100ms)
+      if (segmentDuration < 0.1) {
+        logMessage('Skipping very short segment (< 100ms)')
+        continue
+      }
+
+      // Check audio tracks first (silence detection is primarily audio-based)
+      for (var a = 0; a < sequence.audioTracks.numTracks; a++) {
+        var audioTrack = sequence.audioTracks[a]
+
+        for (var ac = 0; ac < audioTrack.clips.numItems; ac++) {
+          var clip = audioTrack.clips[ac]
+          if (clip) {
+            var clipStart = parseFloat(clip.start.seconds)
+            var clipEnd = parseFloat(clip.end.seconds)
+            var clipDuration = clipEnd - clipStart
+
+            // Check if this clip matches our silence segment (within tolerance)
+            if (
+              Math.abs(clipStart - segmentStart) < tolerance &&
+              Math.abs(clipEnd - segmentEnd) < tolerance &&
+              Math.abs(clipDuration - segmentDuration) < tolerance
+            ) {
+              // Mark this clip for muting
+              clipsToMute.push({
+                clip: clip,
+                trackIndex: a,
+                clipIndex: ac,
+                isVideo: false,
+                name: clip.name || 'Audio Silence',
+                startTime: clipStart,
+                endTime: clipEnd,
+                duration: clipDuration,
+                segmentId: segment.id
+              })
+
+              logMessage(
+                'Found silence clip to mute: ' +
+                  clip.name +
+                  ' (' +
+                  clipStart +
+                  's to ' +
+                  clipEnd +
+                  's, duration: ' +
+                  clipDuration +
+                  's)'
+              )
+            }
+          }
+        }
+      }
+
+      // Check video tracks for matching clips (only if we found audio clips)
+      var audioClipsFound = clipsToMute.filter(function (c) {
+        return !c.isVideo
+      }).length
+
+      if (audioClipsFound > 0) {
+        for (var v = 0; v < sequence.videoTracks.numTracks; v++) {
+          var videoTrack = sequence.videoTracks[v]
+
+          for (var vc = 0; vc < videoTrack.clips.numItems; vc++) {
+            var clip = videoTrack.clips[vc]
+            if (clip) {
+              var clipStart = parseFloat(clip.start.seconds)
+              var clipEnd = parseFloat(clip.end.seconds)
+              var clipDuration = clipEnd - clipStart
+
+              // Check if this clip matches our silence segment (within tolerance)
+              if (
+                Math.abs(clipStart - segmentStart) < tolerance &&
+                Math.abs(clipEnd - segmentEnd) < tolerance &&
+                Math.abs(clipDuration - segmentDuration) < tolerance
+              ) {
+                // Mark this clip for muting
+                clipsToMute.push({
+                  clip: clip,
+                  trackIndex: v,
+                  clipIndex: vc,
+                  isVideo: true,
+                  name: clip.name || 'Video Silence',
+                  startTime: clipStart,
+                  endTime: clipEnd,
+                  duration: clipDuration,
+                  segmentId: segment.id
+                })
+
+                logMessage(
+                  'Found matching video clip (will be skipped): ' +
+                    clip.name +
+                    ' (' +
+                    clipStart +
+                    's to ' +
+                    clipEnd +
+                    's, duration: ' +
+                    clipDuration +
+                    's)'
+                )
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (clipsToMute.length === 0) {
+      return JSON.stringify({
+        success: false,
+        message: 'No silence clips found matching the specified time ranges'
+      })
+    }
+
+    logMessage('Found ' + clipsToMute.length + ' silence clips to mute')
+
+    var clipsMuted = 0
+    var results = []
+    var errors = []
+
+    // Mute each identified silence clip
+    for (var i = 0; i < clipsToMute.length; i++) {
+      var clipData = clipsToMute[i]
+
+      try {
+        // Select the clip first
+        clipData.clip.isSelected = true
+
+        // Apply muting based on clip type
+        var muteSuccess = false
+        if (clipData.isVideo) {
+          // For video clips in silence segments, we don't need to do anything
+          // The silence is in the audio tracks, not the video - keep video visible
+          muteSuccess = true
+          logMessage('Skipped video clip (no muting needed for silence): ' + clipData.name)
+        } else {
+          // For audio clips, mute by setting volume to -∞ dB (0.0 float)
+          if (clipData.clip.components && clipData.clip.components.numItems > 0) {
+            try {
+              var volumeFound = false
+
+              // Look for the Volume component specifically
+              for (var c = 0; c < clipData.clip.components.numItems; c++) {
+                var component = clipData.clip.components[c]
+                if (
+                  component &&
+                  (component.displayName === 'Volume' ||
+                    component.displayName === 'Audio Levels' ||
+                    component.displayName === 'Channel Volume')
+                ) {
+                  if (component.properties && component.properties.numItems > 0) {
+                    // Find the Level property (usually index 1, not 0)
+                    var levelProperty = component.properties[1] || component.properties[0]
+                    if (levelProperty) {
+                      levelProperty.setValue(0.0) // -∞ dB
+                      muteSuccess = true
+                      volumeFound = true
+                      logMessage('Muted audio clip by setting volume to -∞ dB: ' + clipData.name)
+                      break
+                    }
+                  }
+                }
+              }
+
+              // Fallback: If no Volume component found, try first component
+              if (!volumeFound && clipData.clip.components.numItems > 0) {
+                var firstComponent = clipData.clip.components[0]
+                if (
+                  firstComponent &&
+                  firstComponent.properties &&
+                  firstComponent.properties.numItems > 1
+                ) {
+                  // Audio clips typically have Level property at index 1
+                  var levelProperty = firstComponent.properties[1]
+                  if (levelProperty) {
+                    levelProperty.setValue(0.0) // -∞ dB
+                    muteSuccess = true
+                    logMessage(
+                      'Muted audio clip using first component level property: ' + clipData.name
+                    )
+                  }
+                }
+              }
+
+              if (!muteSuccess) {
+                errors.push('Could not find volume property for audio clip: ' + clipData.name)
+              }
+            } catch (volumeError) {
+              errors.push(
+                'Could not mute audio clip: ' + clipData.name + ' - ' + volumeError.toString()
+              )
+            }
+          }
+        }
+
+        // Deselect the clip
+        clipData.clip.isSelected = false
+
+        if (muteSuccess) {
+          clipsMuted++
+          results.push({
+            track: clipData.trackIndex + 1,
+            type: clipData.isVideo ? 'video' : 'audio',
+            name: clipData.name,
+            method: clipData.isVideo ? 'skipped' : 'volume_-inf',
+            segmentId: clipData.segmentId,
+            timeRange: clipData.startTime + 's to ' + clipData.endTime + 's',
+            duration: clipData.duration + 's'
+          })
+          logMessage(
+            'Muted silence clip: ' + clipData.name + ' (duration: ' + clipData.duration + 's)'
+          )
+        }
+      } catch (muteError) {
+        errors.push('Error muting clip: ' + clipData.name + ' - ' + muteError.toString())
+        logMessage('Error muting: ' + clipData.name + ' - ' + muteError.toString())
+      }
+    }
+
+    var message = 'Muted ' + clipsMuted + ' silence clip(s)'
+    if (errors.length > 0) {
+      message += ' with ' + errors.length + ' error(s)'
+    }
+
+    return JSON.stringify({
+      success: clipsMuted > 0,
+      message: message,
+      clipsMuted: clipsMuted,
+      totalClipsFound: clipsToMute.length,
+      mutedClips: results,
+      errors: errors
+    })
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: 'Silence muting failed: ' + error.toString()
+    })
+  }
+}
+
 // ==== EMBEDDED PRESET DATA ====
 // This is the complete XML content of the "Waveform Audio 48kHz 16-bit.epr" preset
 
