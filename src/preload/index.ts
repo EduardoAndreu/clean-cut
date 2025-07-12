@@ -28,13 +28,27 @@ const cleanCutAPI = {
     filePath: string,
     silenceThreshold: number,
     minSilenceLen: number,
-    padding: number
+    padding: number,
+    options?: {
+      selectedAudioTracks?: number[]
+      selectedRange?: 'entire' | 'inout' | 'selected'
+    }
   ) =>
-    ipcRenderer.invoke('process-silences', { filePath, silenceThreshold, minSilenceLen, padding }),
+    ipcRenderer.invoke('process-silences', {
+      filePath,
+      silenceThreshold,
+      minSilenceLen,
+      padding,
+      options
+    }),
   analyzeAudio: (filePath: string) => ipcRenderer.invoke('analyze-audio', filePath),
   showOpenDialog: () => ipcRenderer.invoke('show-open-dialog'),
   requestSequenceInfo: () => ipcRenderer.invoke('request-sequence-info'),
-  requestSelectedClipsInfo: () => ipcRenderer.invoke('request-selected-clips-info')
+  requestSelectedClipsInfo: () => ipcRenderer.invoke('request-selected-clips-info'),
+  getSilenceSession: (sessionId?: string) => ipcRenderer.invoke('get-silence-session', sessionId),
+  deleteSilenceSegments: (sessionId?: string, segmentIds?: string[]) =>
+    ipcRenderer.invoke('delete-silence-segments', sessionId, segmentIds),
+  clearSilenceSessions: () => ipcRenderer.invoke('clear-silence-sessions')
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

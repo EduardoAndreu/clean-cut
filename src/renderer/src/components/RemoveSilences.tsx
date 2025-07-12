@@ -20,7 +20,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
   const [silenceThreshold, setSilenceThreshold] = useState<number>(-30)
   const [minSilenceLen, setMinSilenceLen] = useState<number>(200)
   const [padding, setPadding] = useState<number>(150)
-  const [silenceManagement, setSilenceManagement] = useState<string>('remove')
+  const [silenceManagement, setSilenceManagement] = useState<'remove' | 'keep'>('remove')
   const [, setStatus] = useState<string>('Waiting for Premiere Pro connection...')
   const [sequenceInfo, setSequenceInfo] = useState<{
     success: boolean
@@ -587,7 +587,10 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
             <div className="block text-sm font-semibold text-foreground mb-4">
               Silence Management
             </div>
-            <RadioGroup value={silenceManagement} onValueChange={setSilenceManagement}>
+            <RadioGroup
+              value={silenceManagement}
+              onValueChange={(value) => setSilenceManagement(value as 'remove' | 'keep')}
+            >
               <div className="flex items-center gap-3">
                 <RadioGroupItem value="remove" id="remove" />
                 <Label htmlFor="remove" className="text-xs text-foreground">
@@ -598,18 +601,6 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
                 <RadioGroupItem value="keep" id="keep" />
                 <Label htmlFor="keep" className="text-xs text-foreground">
                   Keep silences
-                </Label>
-              </div>
-              <div className="flex items-center gap-3">
-                <RadioGroupItem value="mute" id="mute" />
-                <Label htmlFor="mute" className="text-xs text-foreground">
-                  Mute silences
-                </Label>
-              </div>
-              <div className="flex items-center gap-3">
-                <RadioGroupItem value="keep-spaces" id="keep-spaces" />
-                <Label htmlFor="keep-spaces" className="text-xs text-foreground">
-                  Remove silences but keep spaces
                 </Label>
               </div>
             </RadioGroup>
@@ -624,6 +615,7 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
             selectedRange={selectedRange}
             sequenceInfo={sequenceInfo}
             premiereConnected={premiereConnected}
+            silenceManagement={silenceManagement}
             onStatusUpdate={setStatus}
           />
         </div>

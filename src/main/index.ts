@@ -16,6 +16,27 @@ interface CleanCutArgs {
   }
 }
 
+// Interface for silence segment data
+interface SilenceSegment {
+  id: string
+  start: number
+  end: number
+  duration: number
+  trackIndices: number[]
+  originalRange: [number, number]
+  processed: boolean
+  deleted: boolean
+}
+
+// Interface for silence processing session
+interface SilenceSession {
+  id: string
+  timestamp: number
+  segments: SilenceSegment[]
+  processingParams: CleanCutArgs
+  sequenceInfo?: any
+}
+
 // WebSocket server variables
 let premiereSocket: WebSocket | null = null
 let mainWindow: BrowserWindow | null = null
@@ -26,6 +47,10 @@ let currentProcessingParams: CleanCutArgs | null = null
 // Store pending export requests
 const pendingExportRequests = new Map<string, (result: any) => void>()
 
+// Store silence sessions for later reuse
+let currentSilenceSession: SilenceSession | null = null
+const silenceSessionHistory = new Map<string, SilenceSession>()
+
 // Helper function to safely send messages to renderer
 function safelyNotifyRenderer(channel: string, data: any) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -35,6 +60,53 @@ function safelyNotifyRenderer(channel: string, data: any) {
       console.error(`Failed to send message to renderer on channel ${channel}:`, error)
     }
   }
+}
+
+// Helper function to create silence session
+function createSilenceSession(silenceRanges: number[][], params: CleanCutArgs): SilenceSession {
+  const sessionId = `silence_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+  const segments: SilenceSegment[] = silenceRanges.map((range, index) => ({
+    id: `segment_${sessionId}_${index}`,
+    start: range[0],
+    end: range[1],
+    duration: range[1] - range[0],
+    trackIndices: params.options?.selectedAudioTracks || [],
+    originalRange: [range[0], range[1]] as [number, number],
+    processed: false,
+    deleted: false
+  }))
+
+  const session: SilenceSession = {
+    id: sessionId,
+    timestamp: Date.now(),
+    segments,
+    processingParams: params,
+    sequenceInfo: null
+  }
+
+  return session
+}
+
+// Helper function to get silence segments that can be deleted
+function getDeletableSilenceSegments(sessionId?: string): SilenceSegment[] {
+  const session = sessionId ? silenceSessionHistory.get(sessionId) : currentSilenceSession
+  if (!session) return []
+
+  return session.segments.filter((segment) => segment.processed && !segment.deleted)
+}
+
+// Helper function to mark segments as deleted
+function markSegmentsAsDeleted(sessionId: string, segmentIds: string[]): void {
+  const session =
+    sessionId === 'current' ? currentSilenceSession : silenceSessionHistory.get(sessionId)
+  if (!session) return
+
+  session.segments.forEach((segment) => {
+    if (segmentIds.includes(segment.id)) {
+      segment.deleted = true
+    }
+  })
 }
 
 // Function to process audio file using VAD-based Python script
@@ -373,9 +445,13 @@ app.whenReady().then(() => {
         silenceThreshold: number
         minSilenceLen: number
         padding: number
+        options?: {
+          selectedAudioTracks?: number[]
+          selectedRange?: 'entire' | 'inout' | 'selected'
+        }
       }
     ) => {
-      const { filePath, silenceThreshold, minSilenceLen, padding } = params
+      const { filePath, silenceThreshold, minSilenceLen, padding, options } = params
 
       try {
         console.log('=== PROCESSING SILENCES ===')
@@ -386,8 +462,24 @@ app.whenReady().then(() => {
         const silenceRanges = await processAudioFile(filePath, {
           threshold: silenceThreshold,
           minSilenceLen,
-          padding
+          padding,
+          options
         })
+
+        // Create silence session to store the data
+        const silenceSession = createSilenceSession(silenceRanges, {
+          threshold: silenceThreshold,
+          minSilenceLen,
+          padding,
+          options
+        })
+
+        // Store the session
+        currentSilenceSession = silenceSession
+        silenceSessionHistory.set(silenceSession.id, silenceSession)
+
+        console.log('Created silence session:', silenceSession.id)
+        console.log('Silence segments:', silenceSession.segments.length)
 
         // Convert to cut format expected by Premiere
         const cutCommands = silenceRanges.map((range: number[]) => ({
@@ -400,7 +492,8 @@ app.whenReady().then(() => {
           premiereSocket.send(
             JSON.stringify({
               type: 'request_cuts',
-              payload: cutCommands
+              payload: cutCommands,
+              sessionId: silenceSession.id
             })
           )
           console.log('Sent cut requests to Premiere:', cutCommands)
@@ -409,7 +502,9 @@ app.whenReady().then(() => {
         return {
           success: true,
           message: `Found ${silenceRanges.length} silence ranges. Cuts sent to Premiere Pro.`,
-          silenceCount: silenceRanges.length
+          silenceCount: silenceRanges.length,
+          sessionId: silenceSession.id,
+          segments: silenceSession.segments
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
@@ -418,6 +513,100 @@ app.whenReady().then(() => {
       }
     }
   )
+
+  // Handler for getting current silence session info
+  ipcMain.handle('get-silence-session', async (_, sessionId?: string) => {
+    const session = sessionId ? silenceSessionHistory.get(sessionId) : currentSilenceSession
+
+    if (!session) {
+      return { success: false, error: 'No silence session found' }
+    }
+
+    return {
+      success: true,
+      session: {
+        id: session.id,
+        timestamp: session.timestamp,
+        segments: session.segments,
+        processingParams: session.processingParams,
+        totalSegments: session.segments.length,
+        deletableSegments: getDeletableSilenceSegments(session.id).length
+      }
+    }
+  })
+
+  // Handler for deleting silence segments
+  ipcMain.handle(
+    'delete-silence-segments',
+    async (_, sessionId?: string, segmentIds?: string[]) => {
+      if (!premiereSocket) {
+        throw new Error('Premiere Pro is not connected.')
+      }
+
+      const targetSessionId = sessionId || currentSilenceSession?.id
+      if (!targetSessionId) {
+        throw new Error('No active silence session found.')
+      }
+
+      const session = sessionId ? silenceSessionHistory.get(sessionId) : currentSilenceSession
+      if (!session) {
+        throw new Error('Silence session not found.')
+      }
+
+      // Get deletable segments (processed but not deleted)
+      const deletableSegments = getDeletableSilenceSegments(targetSessionId)
+
+      // If no specific segment IDs provided, delete all deletable segments
+      const segmentsToDelete = segmentIds
+        ? deletableSegments.filter((segment) => segmentIds.includes(segment.id))
+        : deletableSegments
+
+      if (segmentsToDelete.length === 0) {
+        throw new Error('No deletable silence segments found.')
+      }
+
+      // Send delete request to Premiere Pro
+      const deleteCommands = segmentsToDelete.map((segment) => ({
+        start: segment.start,
+        end: segment.end,
+        id: segment.id
+      }))
+
+      premiereSocket.send(
+        JSON.stringify({
+          type: 'request_delete_silences',
+          payload: deleteCommands,
+          sessionId: targetSessionId
+        })
+      )
+
+      console.log('Sent delete silence requests to Premiere:', deleteCommands)
+
+      // Mark segments as deleted
+      markSegmentsAsDeleted(
+        targetSessionId,
+        segmentsToDelete.map((s) => s.id)
+      )
+
+      return {
+        success: true,
+        message: `Deletion request sent for ${segmentsToDelete.length} silence segments.`,
+        deletedSegments: segmentsToDelete.length,
+        sessionId: targetSessionId
+      }
+    }
+  )
+
+  // Handler for clearing silence sessions
+  ipcMain.handle('clear-silence-sessions', async () => {
+    currentSilenceSession = null
+    silenceSessionHistory.clear()
+
+    return {
+      success: true,
+      message: 'All silence sessions cleared.'
+    }
+  })
 
   // Handler for running the clean-cut Python script (supports both file and Premiere Pro workflow)
   ipcMain.handle(
@@ -437,7 +626,7 @@ app.whenReady().then(() => {
       // If filePath is provided (file mode), process directly
       if (filePath && filePath.trim() !== '') {
         console.log('Processing file directly:', filePath)
-        return processAudioFile(filePath, { threshold, minSilenceLen, padding })
+        return processAudioFile(filePath, { threshold, minSilenceLen, padding, options })
       }
 
       // If no filePath (Premiere mode), use WebSocket workflow
@@ -691,6 +880,40 @@ app.whenReady().then(() => {
           case 'cuts_response':
             // Handle response from Premiere Pro after cutting operations
             console.log('Received cuts response from Premiere:', parsedMessage.payload)
+
+            // Mark silence segments as processed if we have a session
+            if (
+              parsedMessage.sessionId &&
+              currentSilenceSession &&
+              currentSilenceSession.id === parsedMessage.sessionId
+            ) {
+              currentSilenceSession.segments.forEach((segment) => {
+                segment.processed = true
+              })
+              console.log(
+                'Marked silence segments as processed for session:',
+                parsedMessage.sessionId
+              )
+
+              // Notify renderer about the updated session
+              safelyNotifyRenderer('silence-session-updated', {
+                sessionId: currentSilenceSession.id,
+                segments: currentSilenceSession.segments
+              })
+            }
+            break
+
+          case 'delete_silences_response':
+            // Handle response from Premiere Pro after silence deletion
+            console.log('Received delete silences response from Premiere:', parsedMessage.payload)
+
+            // Notify renderer about deletion completion
+            safelyNotifyRenderer('silence-deletion-completed', {
+              sessionId:
+                parsedMessage.sessionId ||
+                (currentSilenceSession ? currentSilenceSession.id : null),
+              result: parsedMessage.payload
+            })
             break
 
           default:

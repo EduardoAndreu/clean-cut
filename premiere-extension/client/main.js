@@ -646,7 +646,13 @@ function connect() {
                 // Send success message back to server
                 const response = {
                   type: 'cuts_response',
-                  payload: 'success'
+                  payload: {
+                    success: true,
+                    totalCutsPerformed,
+                    totalRanges,
+                    errors: errors.length > 0 ? errors : undefined
+                  },
+                  sessionId: message.sessionId
                 }
                 ws.send(JSON.stringify(response))
                 console.log('Cuts response sent:', response)
@@ -696,6 +702,31 @@ function connect() {
 
             // Start processing cuts
             processNextCut()
+            break
+
+          case 'request_delete_silences':
+            // Handle silence deletion request
+            addLogEntry(
+              `Received delete silences request for ${message.payload.length} segments`,
+              'info'
+            )
+
+            // Convert silence segments to clip selection and deletion
+            const deleteResult = cs.evalScript(
+              `deleteSilenceSegments('${JSON.stringify(message.payload)}')`
+            )
+            addLogEntry(`Delete silences result: ${deleteResult}`, 'info')
+
+            // Send response back to confirm deletion
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(
+                JSON.stringify({
+                  type: 'delete_silences_response',
+                  payload: deleteResult,
+                  sessionId: message.sessionId
+                })
+              )
+            }
             break
 
           case 'request_sequence_info':

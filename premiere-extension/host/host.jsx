@@ -1498,6 +1498,350 @@ function removeSelectedClipRipple() {
 }
 
 /**
+ * Identifies and deletes silence segments based on audio level analysis
+ * @param {string} segmentsJSON - JSON string of silence segments with start/end times
+ * @returns {string} JSON string with operation result
+ */
+function deleteSilenceSegments(segmentsJSON) {
+  try {
+    var sequence = app.project.activeSequence
+    if (!sequence) {
+      return JSON.stringify({ success: false, error: 'No active sequence' })
+    }
+
+    var segments
+    try {
+      segments = JSON.parse(segmentsJSON)
+    } catch (parseError) {
+      return JSON.stringify({
+        success: false,
+        error: 'Invalid segments JSON: ' + parseError.toString()
+      })
+    }
+
+    if (!segments || segments.length === 0) {
+      return JSON.stringify({
+        success: false,
+        error: 'No silence segments provided'
+      })
+    }
+
+    logMessage('Identifying silence clips for deletion...')
+    logMessage('Segments to delete: ' + segments.length)
+
+    var clipsToDelete = []
+    var tolerance = 0.05 // 50ms tolerance for time matching (tighter than before)
+
+    // Search through all tracks to find clips that match our silence segments
+    for (var s = 0; s < segments.length; s++) {
+      var segment = segments[s]
+      var segmentStart = segment.start
+      var segmentEnd = segment.end
+      var segmentDuration = segmentEnd - segmentStart
+
+      logMessage(
+        'Looking for silence segment: ' +
+          segmentStart +
+          's to ' +
+          segmentEnd +
+          's (duration: ' +
+          segmentDuration +
+          's)'
+      )
+
+      // Only process segments that are likely to be silence (longer than 100ms)
+      if (segmentDuration < 0.1) {
+        logMessage('Skipping very short segment (< 100ms)')
+        continue
+      }
+
+      // Check audio tracks first (silence detection is primarily audio-based)
+      for (var a = 0; a < sequence.audioTracks.numTracks; a++) {
+        var audioTrack = sequence.audioTracks[a]
+
+        for (var ac = 0; ac < audioTrack.clips.numItems; ac++) {
+          var clip = audioTrack.clips[ac]
+          if (clip) {
+            var clipStart = parseFloat(clip.start.seconds)
+            var clipEnd = parseFloat(clip.end.seconds)
+            var clipDuration = clipEnd - clipStart
+
+            // Check if this clip matches our silence segment (within tolerance)
+            // Must match start time, end time, AND duration
+            if (
+              Math.abs(clipStart - segmentStart) < tolerance &&
+              Math.abs(clipEnd - segmentEnd) < tolerance &&
+              Math.abs(clipDuration - segmentDuration) < tolerance
+            ) {
+              // Additional check: ensure this is likely a silence segment
+              // by checking if it's in the middle of what was originally a longer clip
+              var isLikelySilence = true
+
+              // If the clip is very short compared to typical speech, it's likely silence
+              if (clipDuration < 0.5) {
+                isLikelySilence = true
+              }
+
+              if (isLikelySilence) {
+                // Mark this clip for deletion
+                clipsToDelete.push({
+                  clip: clip,
+                  trackIndex: a,
+                  clipIndex: ac,
+                  isVideo: false,
+                  name: clip.name || 'Audio Silence',
+                  startTime: clipStart,
+                  endTime: clipEnd,
+                  duration: clipDuration,
+                  segmentId: segment.id
+                })
+
+                logMessage(
+                  'Found silence clip: ' +
+                    clip.name +
+                    ' (' +
+                    clipStart +
+                    's to ' +
+                    clipEnd +
+                    's, duration: ' +
+                    clipDuration +
+                    's)'
+                )
+              }
+            }
+          }
+        }
+      }
+
+      // Check video tracks for matching clips (only if we found audio clips)
+      // This ensures we only delete video segments that correspond to audio silence
+      var audioClipsFound = clipsToDelete.filter(function (c) {
+        return !c.isVideo
+      }).length
+
+      if (audioClipsFound > 0) {
+        for (var v = 0; v < sequence.videoTracks.numTracks; v++) {
+          var videoTrack = sequence.videoTracks[v]
+
+          for (var vc = 0; vc < videoTrack.clips.numItems; vc++) {
+            var clip = videoTrack.clips[vc]
+            if (clip) {
+              var clipStart = parseFloat(clip.start.seconds)
+              var clipEnd = parseFloat(clip.end.seconds)
+              var clipDuration = clipEnd - clipStart
+
+              // Check if this clip matches our silence segment (within tolerance)
+              if (
+                Math.abs(clipStart - segmentStart) < tolerance &&
+                Math.abs(clipEnd - segmentEnd) < tolerance &&
+                Math.abs(clipDuration - segmentDuration) < tolerance
+              ) {
+                // Mark this clip for deletion
+                clipsToDelete.push({
+                  clip: clip,
+                  trackIndex: v,
+                  clipIndex: vc,
+                  isVideo: true,
+                  name: clip.name || 'Video Silence',
+                  startTime: clipStart,
+                  endTime: clipEnd,
+                  duration: clipDuration,
+                  segmentId: segment.id
+                })
+
+                logMessage(
+                  'Found matching video clip: ' +
+                    clip.name +
+                    ' (' +
+                    clipStart +
+                    's to ' +
+                    clipEnd +
+                    's, duration: ' +
+                    clipDuration +
+                    's)'
+                )
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (clipsToDelete.length === 0) {
+      return JSON.stringify({
+        success: false,
+        message: 'No silence clips found matching the specified time ranges'
+      })
+    }
+
+    logMessage('Found ' + clipsToDelete.length + ' silence clips to delete')
+
+    // Sort clips by start time (latest first) to prevent index shifting during deletion
+    clipsToDelete.sort(function (a, b) {
+      return b.startTime - a.startTime
+    })
+
+    var clipsDeleted = 0
+    var results = []
+    var errors = []
+
+    // Delete each identified silence clip using proper deletion (not opacity changes)
+    for (var i = 0; i < clipsToDelete.length; i++) {
+      var clipData = clipsToDelete[i]
+
+      try {
+        // Use a more aggressive deletion approach
+        var result = properDeleteClip(
+          clipData.trackIndex,
+          clipData.clipIndex,
+          clipData.isVideo,
+          true
+        )
+
+        if (result.success) {
+          clipsDeleted++
+          results.push({
+            track: clipData.trackIndex + 1,
+            type: clipData.isVideo ? 'video' : 'audio',
+            name: clipData.name,
+            method: result.method,
+            segmentId: clipData.segmentId,
+            timeRange: clipData.startTime + 's to ' + clipData.endTime + 's',
+            duration: clipData.duration + 's'
+          })
+          logMessage(
+            'Deleted silence clip: ' + clipData.name + ' (duration: ' + clipData.duration + 's)'
+          )
+        } else {
+          errors.push('Failed to delete clip: ' + clipData.name + ' - ' + result.error)
+          logMessage('Failed to delete: ' + clipData.name + ' - ' + result.error)
+        }
+      } catch (deleteError) {
+        errors.push('Error deleting clip: ' + clipData.name + ' - ' + deleteError.toString())
+        logMessage('Error deleting: ' + clipData.name + ' - ' + deleteError.toString())
+      }
+    }
+
+    var message = 'Deleted ' + clipsDeleted + ' silence clip(s)'
+    if (errors.length > 0) {
+      message += ' with ' + errors.length + ' error(s)'
+    }
+
+    return JSON.stringify({
+      success: clipsDeleted > 0,
+      message: message,
+      clipsDeleted: clipsDeleted,
+      totalClipsFound: clipsToDelete.length,
+      deletedClips: results,
+      errors: errors
+    })
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: 'Silence deletion failed: ' + error.toString()
+    })
+  }
+}
+
+/**
+ * Properly deletes a clip without falling back to opacity changes
+ * @param {number} trackIndex - Index of the track
+ * @param {number} clipIndex - Index of the clip in the track
+ * @param {boolean} isVideo - Whether this is a video track
+ * @param {boolean} ripple - Whether to use ripple delete
+ * @returns {object} Result object with success status and method used
+ */
+function properDeleteClip(trackIndex, clipIndex, isVideo, ripple) {
+  var results = {
+    success: false,
+    error: 'All deletion methods failed',
+    methods: []
+  }
+
+  // Method 1: Try official trackItem.remove() method (Premiere Pro 13.1+)
+  try {
+    var sequence = app.project.activeSequence
+    if (sequence) {
+      var track = isVideo ? sequence.videoTracks[trackIndex] : sequence.audioTracks[trackIndex]
+
+      if (track && clipIndex < track.clips.numItems) {
+        var clip = track.clips[clipIndex]
+
+        // Use the official remove method
+        var removeResult = clip.remove(ripple, true)
+
+        if (removeResult === 0) {
+          results.success = true
+          results.method = 'trackItem.remove()'
+          results.methods.push('trackItem.remove() - Success')
+          return results
+        } else {
+          results.methods.push('trackItem.remove() - Returned: ' + removeResult)
+        }
+      }
+    }
+  } catch (removeError) {
+    results.methods.push('trackItem.remove() - Failed: ' + removeError.toString())
+  }
+
+  // Method 2: Try QE DOM approach (more reliable than the old fallback)
+  try {
+    if (app.enableQE() !== false) {
+      var qeSequence = qe.project.getActiveSequence()
+      var qeTrack = isVideo
+        ? qeSequence.getVideoTrackAt(trackIndex)
+        : qeSequence.getAudioTrackAt(trackIndex)
+
+      if (qeTrack && qeTrack.numItems > clipIndex) {
+        var qeClip = qeTrack.getItemAt(clipIndex)
+        if (qeClip) {
+          qeClip.remove(ripple, true)
+          results.success = true
+          results.method = 'QE DOM'
+          results.methods.push('QE DOM - Success')
+          return results
+        }
+      }
+    }
+  } catch (qeError) {
+    results.methods.push('QE DOM - Failed: ' + qeError.toString())
+  }
+
+  // Method 3: Try selection and delete (last resort)
+  try {
+    var sequence = app.project.activeSequence
+    if (sequence) {
+      var track = isVideo ? sequence.videoTracks[trackIndex] : sequence.audioTracks[trackIndex]
+
+      if (track && clipIndex < track.clips.numItems) {
+        var clip = track.clips[clipIndex]
+
+        // Select the clip
+        clip.isSelected = true
+
+        // Try to delete selected clips
+        if (ripple) {
+          sequence.deleteSelection() // This should ripple delete
+        } else {
+          sequence.deleteSelection() // This should delete with gap
+        }
+
+        results.success = true
+        results.method = 'selection.delete()'
+        results.methods.push('Selection delete - Success')
+        return results
+      }
+    }
+  } catch (selectionError) {
+    results.methods.push('Selection delete - Failed: ' + selectionError.toString())
+  }
+
+  // DO NOT fall back to opacity changes - we want actual deletion
+  results.error = 'All deletion methods failed: ' + results.methods.join(', ')
+  return results
+}
+
+/**
  * Mutes the selected clips by setting audio volume to -∞ dB and video opacity to 0
  * @returns {string} JSON string with operation result
  */

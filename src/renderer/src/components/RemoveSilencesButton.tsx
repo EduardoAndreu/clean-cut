@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from './ui/button'
 
 interface SequenceInfo {
@@ -42,6 +42,26 @@ interface SequenceInfo {
   error?: string
 }
 
+interface SilenceSegment {
+  id: string
+  start: number
+  end: number
+  duration: number
+  trackIndices: number[]
+  originalRange: [number, number]
+  processed: boolean
+  deleted: boolean
+}
+
+interface SilenceSession {
+  id: string
+  timestamp: number
+  segments: SilenceSegment[]
+  processingParams: any
+  totalSegments: number
+  deletableSegments: number
+}
+
 interface RemoveSilencesButtonProps {
   // Processing parameters
   silenceThreshold: number
@@ -51,6 +71,7 @@ interface RemoveSilencesButtonProps {
   selectedRange: 'entire' | 'inout' | 'selected'
   sequenceInfo: SequenceInfo | null
   premiereConnected: boolean
+  silenceManagement: 'remove' | 'keep'
 
   // Callback functions
   onStatusUpdate: (status: string) => void
@@ -70,6 +91,7 @@ function RemoveSilencesButton({
   selectedRange,
   sequenceInfo,
   premiereConnected,
+  silenceManagement,
   onStatusUpdate,
   onError,
   onSuccess,
@@ -77,9 +99,71 @@ function RemoveSilencesButton({
   variant = 'default'
 }: RemoveSilencesButtonProps): React.JSX.Element {
   const [isProcessing, setIsProcessing] = useState<boolean>(false)
+  const [currentSession, setCurrentSession] = useState<SilenceSession | null>(null)
+  const [pendingDeletion, setPendingDeletion] = useState<boolean>(false)
 
   // Hardcoded export location for processing
   const EXPORT_LOCATION = '/Users/ea/Downloads'
+
+  // Listen for silence session updates to handle deletion timing
+  useEffect(() => {
+    const handleSilenceSessionUpdate = (_event: any, data: any) => {
+      console.log('Silence session updated:', data)
+
+      // If we're pending deletion and segments are now processed, proceed with deletion
+      if (pendingDeletion && data.sessionId === currentSession?.id) {
+        const processedSegments =
+          data.segments?.filter((seg: SilenceSegment) => seg.processed) || []
+        console.log('Processed segments:', processedSegments.length)
+
+        if (processedSegments.length > 0) {
+          setPendingDeletion(false)
+          proceedWithDeletion(data.sessionId)
+        }
+      }
+    }
+
+    // Add IPC listeners
+    if (window.electron && window.electron.ipcRenderer) {
+      window.electron.ipcRenderer.on('silence-session-updated', handleSilenceSessionUpdate)
+    }
+
+    return () => {
+      // Cleanup listeners on unmount
+      if (window.electron && window.electron.ipcRenderer) {
+        window.electron.ipcRenderer.removeAllListeners('silence-session-updated')
+      }
+    }
+  }, [pendingDeletion, currentSession])
+
+  const proceedWithDeletion = async (sessionId: string) => {
+    console.log('Proceeding with deletion for session:', sessionId)
+    onStatusUpdate('Deleting silence segments...')
+
+    try {
+      const deleteResult = await window.cleanCutAPI.deleteSilenceSegments(sessionId)
+
+      if (deleteResult.success) {
+        const successMessage = `Silence processing completed successfully!
+Found and removed ${deleteResult.deletedSegments || 'multiple'} silence segments from the timeline.`
+        onStatusUpdate(successMessage)
+        onSuccess?.(successMessage)
+      } else {
+        const errorMessage = `Silence processing completed, but deletion failed: ${deleteResult.error || 'Unknown error'}`
+        onStatusUpdate(errorMessage)
+        onError?.(errorMessage)
+      }
+    } catch (deleteError) {
+      console.error('Deletion error:', deleteError)
+      const errorMsg = `Silence processing completed, but deletion failed: ${deleteError}`
+      onStatusUpdate(errorMsg)
+      onError?.(errorMsg)
+    } finally {
+      setIsProcessing(false)
+      setCurrentSession(null)
+      setPendingDeletion(false)
+    }
+  }
 
   const handleProcessFromPremiere = async () => {
     if (!premiereConnected) {
@@ -110,6 +194,7 @@ function RemoveSilencesButton({
     }
 
     setIsProcessing(true)
+    setPendingDeletion(false)
     onStatusUpdate('Exporting audio from Premiere Pro...')
 
     try {
@@ -127,32 +212,76 @@ function RemoveSilencesButton({
           exportResult.outputPath,
           silenceThreshold,
           minSilenceLen,
-          padding
+          padding,
+          {
+            selectedAudioTracks,
+            selectedRange
+          }
         )
 
-        if (processResult.success) {
-          const successMessage = `Silence processing completed!
-Found ${processResult.silenceCount || 0} silence ranges.
-Cuts have been sent to Premiere Pro.`
-          onStatusUpdate(successMessage)
-          onSuccess?.(successMessage)
+        if (processResult.success && processResult.sessionId && processResult.segments) {
+          // Create session data with type safety
+          const sessionData: SilenceSession = {
+            id: processResult.sessionId,
+            timestamp: Date.now(),
+            segments: processResult.segments,
+            processingParams: { silenceThreshold, minSilenceLen, padding },
+            totalSegments: processResult.segments.length,
+            deletableSegments: processResult.segments.filter((seg) => seg.processed).length
+          }
+
+          setCurrentSession(sessionData)
+
+          // Handle the action based on user's pre-selected choice
+          if (silenceManagement === 'remove') {
+            // User wants to remove silences - wait for segments to be processed, then delete
+            onStatusUpdate('Silence processing completed! Waiting for timeline cuts to finish...')
+            setPendingDeletion(true)
+          } else {
+            // User wants to keep silences - just cut without deleting
+            const successMessage = `Silence processing completed!
+Found ${processResult.silenceCount || 0} silence ranges and cut the timeline at silence boundaries.
+Silence segments have been preserved as requested.`
+            onStatusUpdate(successMessage)
+            onSuccess?.(successMessage)
+            setIsProcessing(false)
+            setCurrentSession(null)
+          }
         } else {
           const errorMessage = `Silence processing failed: ${processResult.error || 'Unknown error'}`
           onStatusUpdate(errorMessage)
           onError?.(errorMessage)
+          setIsProcessing(false)
         }
       } else {
         const errorMessage = `Audio export failed: ${exportResult.error || 'Unknown error'}`
         onStatusUpdate(errorMessage)
         onError?.(errorMessage)
+        setIsProcessing(false)
       }
     } catch (error) {
       console.error('Processing error:', error)
       const errorMsg = `Error during processing: ${error}`
       onStatusUpdate(errorMsg)
       onError?.(errorMsg)
-    } finally {
       setIsProcessing(false)
+      setCurrentSession(null)
+      setPendingDeletion(false)
+    }
+  }
+
+  const getButtonText = () => {
+    if (isProcessing) {
+      if (pendingDeletion) {
+        return 'Deleting Silences...'
+      }
+      return 'Processing...'
+    }
+
+    if (silenceManagement === 'remove') {
+      return 'Find & Remove Silences'
+    } else {
+      return 'Find & Cut at Silences'
     }
   }
 
@@ -165,7 +294,7 @@ Cuts have been sent to Premiere Pro.`
         disabled={isProcessing || !premiereConnected}
         variant={isProcessing || !premiereConnected ? 'secondary' : variant}
       >
-        {isProcessing ? 'Processing...' : 'Remove Silences'}
+        {getButtonText()}
       </Button>
     </div>
   )
