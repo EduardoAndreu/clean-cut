@@ -18,136 +18,6 @@ if (!Object.keys) {
 }
 
 /**
- * Robust clip deletion that handles New World Scripting issues
- * @param {number} trackIndex - Track index (0-based)
- * @param {number} clipIndex - Clip index on the track (0-based)
- * @param {boolean} isVideo - True for video track, false for audio track
- * @param {boolean} ripple - True for ripple delete, false to keep gap
- * @returns {object} Result object with success status and methods tried
- */
-function robustDeleteClip(trackIndex, clipIndex, isVideo, ripple) {
-  var results = {
-    success: false,
-    error: 'All deletion methods failed',
-    methods: []
-  }
-
-  // Method 1: Try official trackItem.remove() method (Premiere Pro 13.1+)
-  try {
-    var sequence = app.project.activeSequence
-    if (sequence) {
-      var track = isVideo ? sequence.videoTracks[trackIndex] : sequence.audioTracks[trackIndex]
-
-      if (track && clipIndex < track.clips.numItems) {
-        var clip = track.clips[clipIndex]
-
-        // Use the official remove method
-        // Parameters: inRipple (boolean), inAlignToVideo (boolean)
-        var removeResult = clip.remove(ripple, true)
-
-        if (removeResult === 0) {
-          // 0 means success
-          results.success = true
-          results.method = 'trackItem.remove()'
-          results.methods.push('trackItem.remove() - Success')
-          return results
-        } else {
-          results.methods.push('trackItem.remove() - Returned: ' + removeResult)
-        }
-      }
-    }
-  } catch (removeError) {
-    results.methods.push('trackItem.remove() - Failed: ' + removeError.toString())
-  }
-
-  // Method 2: Try disabling clip (if removal fails)
-  try {
-    var sequence = app.project.activeSequence
-    if (sequence) {
-      var track = isVideo ? sequence.videoTracks[trackIndex] : sequence.audioTracks[trackIndex]
-
-      if (track && clipIndex < track.clips.numItems) {
-        var clip = track.clips[clipIndex]
-
-        // Try to disable the clip by setting enabled to false
-        clip.enabled = false
-
-        // Also try setting opacity to 0 for video clips
-        if (isVideo && clip.components) {
-          try {
-            for (var i = 0; i < clip.components.numItems; i++) {
-              var component = clip.components[i]
-              if (
-                component &&
-                component.displayName &&
-                component.displayName.indexOf('Opacity') >= 0
-              ) {
-                component.properties[0].setValue(0, true) // Set opacity to 0%
-                break
-              }
-            }
-          } catch (opacityError) {
-            results.methods.push('Opacity adjustment warning: ' + opacityError.toString())
-          }
-        }
-
-        // For audio clips, try to set volume to silence
-        if (!isVideo && clip.components) {
-          try {
-            for (var i = 0; i < clip.components.numItems; i++) {
-              var component = clip.components[i]
-              if (
-                component &&
-                component.displayName &&
-                component.displayName.indexOf('Volume') >= 0
-              ) {
-                component.properties[0].setValue(-60, true) // Set volume to -60dB (near silence)
-                break
-              }
-            }
-          } catch (volumeError) {
-            results.methods.push('Volume adjustment warning: ' + volumeError.toString())
-          }
-        }
-
-        results.success = true
-        results.method = 'clip.enabled = false'
-        results.methods.push('Clip disabled instead of removed')
-        return results
-      }
-    }
-  } catch (disableError) {
-    results.methods.push('Disable clip - Failed: ' + disableError.toString())
-  }
-
-  // Method 3: Try QE DOM approach (last resort)
-  try {
-    if (app.enableQE() !== false) {
-      var qeSequence = qe.project.getActiveSequence()
-      var qeTrack = isVideo
-        ? qeSequence.getVideoTrackAt(trackIndex)
-        : qeSequence.getAudioTrackAt(trackIndex)
-
-      if (qeTrack && qeTrack.numItems > clipIndex) {
-        var qeClip = qeTrack.getItemAt(clipIndex)
-        if (qeClip) {
-          qeClip.remove(ripple, true)
-          results.success = true
-          results.method = 'QE DOM'
-          results.methods.push('QE DOM - Success')
-          return results
-        }
-      }
-    }
-  } catch (qeError) {
-    results.methods.push('QE DOM - Failed: ' + qeError.toString())
-  }
-
-  results.error = 'All methods failed: ' + results.methods.join(', ')
-  return results
-}
-
-/**
  * Helper function to log messages to the Premiere Pro console
  * @param {string} message - Message to log
  */
@@ -1385,7 +1255,7 @@ function findSelectedClips() {
 }
 
 /**
- * Removes selected clips but keeps gaps in the timeline
+ * Removes selected clips while preserving gaps
  * @returns {string} JSON string with operation result
  */
 function removeSelectedClipKeepGap() {
@@ -1411,7 +1281,7 @@ function removeSelectedClipKeepGap() {
     // Remove only the originally selected clips (keep gaps)
     for (var i = 0; i < selectedClips.length; i++) {
       var clipData = selectedClips[i]
-      var result = robustDeleteClip(
+      var result = properDeleteClip(
         clipData.trackIndex,
         clipData.clipIndex,
         clipData.isVideo,
@@ -1470,7 +1340,7 @@ function removeSelectedClipRipple() {
     // Remove only the originally selected clips with ripple
     for (var i = 0; i < selectedClips.length; i++) {
       var clipData = selectedClips[i]
-      var result = robustDeleteClip(clipData.trackIndex, clipData.clipIndex, clipData.isVideo, true)
+      var result = properDeleteClip(clipData.trackIndex, clipData.clipIndex, clipData.isVideo, true)
 
       if (result.success) {
         clipsRemoved++
