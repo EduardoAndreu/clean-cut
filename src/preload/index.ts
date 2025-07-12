@@ -48,6 +48,8 @@ const cleanCutAPI = {
   getSilenceSession: (sessionId?: string) => ipcRenderer.invoke('get-silence-session', sessionId),
   deleteSilenceSegments: (sessionId?: string, segmentIds?: string[]) =>
     ipcRenderer.invoke('delete-silence-segments', sessionId, segmentIds),
+  removeSilenceSegmentsWithGaps: (sessionId?: string, segmentIds?: string[]) =>
+    ipcRenderer.invoke('remove-silence-segments-with-gaps', sessionId, segmentIds),
   muteSilenceSegments: (sessionId?: string, segmentIds?: string[]) =>
     ipcRenderer.invoke('mute-silence-segments', sessionId, segmentIds),
   clearSilenceSessions: () => ipcRenderer.invoke('clear-silence-sessions')

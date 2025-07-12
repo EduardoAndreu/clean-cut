@@ -2155,6 +2155,243 @@ function muteSilenceSegments(segmentsJSON) {
   }
 }
 
+/**
+ * Identifies and removes silence segments with gaps maintained based on audio level analysis
+ * @param {string} segmentsJSON - JSON string of silence segments with start/end times
+ * @returns {string} JSON string with operation result
+ */
+function removeSilenceSegmentsWithGaps(segmentsJSON) {
+  try {
+    var sequence = app.project.activeSequence
+    if (!sequence) {
+      return JSON.stringify({ success: false, error: 'No active sequence' })
+    }
+
+    var segments
+    try {
+      segments = JSON.parse(segmentsJSON)
+    } catch (parseError) {
+      return JSON.stringify({
+        success: false,
+        error: 'Invalid segments JSON: ' + parseError.toString()
+      })
+    }
+
+    if (!segments || segments.length === 0) {
+      return JSON.stringify({
+        success: false,
+        error: 'No silence segments provided'
+      })
+    }
+
+    logMessage('Identifying silence clips for removal (keeping gaps)...')
+    logMessage('Segments to remove: ' + segments.length)
+
+    var clipsToRemove = []
+    var tolerance = 0.05 // 50ms tolerance for time matching
+
+    // Search through all tracks to find clips that match our silence segments
+    for (var s = 0; s < segments.length; s++) {
+      var segment = segments[s]
+      var segmentStart = segment.start
+      var segmentEnd = segment.end
+      var segmentDuration = segmentEnd - segmentStart
+
+      logMessage(
+        'Looking for silence segment: ' +
+          segmentStart +
+          's to ' +
+          segmentEnd +
+          's (duration: ' +
+          segmentDuration +
+          's)'
+      )
+
+      // Only process segments that are likely to be silence (longer than 100ms)
+      if (segmentDuration < 0.1) {
+        logMessage('Skipping very short segment (< 100ms)')
+        continue
+      }
+
+      // Check audio tracks first (silence detection is primarily audio-based)
+      for (var a = 0; a < sequence.audioTracks.numTracks; a++) {
+        var audioTrack = sequence.audioTracks[a]
+
+        for (var ac = 0; ac < audioTrack.clips.numItems; ac++) {
+          var clip = audioTrack.clips[ac]
+          if (clip) {
+            var clipStart = parseFloat(clip.start.seconds)
+            var clipEnd = parseFloat(clip.end.seconds)
+            var clipDuration = clipEnd - clipStart
+
+            // Check if this clip matches our silence segment (within tolerance)
+            if (
+              Math.abs(clipStart - segmentStart) < tolerance &&
+              Math.abs(clipEnd - segmentEnd) < tolerance &&
+              Math.abs(clipDuration - segmentDuration) < tolerance
+            ) {
+              // Mark this clip for removal
+              clipsToRemove.push({
+                clip: clip,
+                trackIndex: a,
+                clipIndex: ac,
+                isVideo: false,
+                name: clip.name || 'Audio Silence',
+                startTime: clipStart,
+                endTime: clipEnd,
+                duration: clipDuration,
+                segmentId: segment.id
+              })
+
+              logMessage(
+                'Found silence clip to remove: ' +
+                  clip.name +
+                  ' (' +
+                  clipStart +
+                  's to ' +
+                  clipEnd +
+                  's, duration: ' +
+                  clipDuration +
+                  's)'
+              )
+            }
+          }
+        }
+      }
+
+      // Check video tracks for matching clips (only if we found audio clips)
+      var audioClipsFound = clipsToRemove.filter(function (c) {
+        return !c.isVideo
+      }).length
+
+      if (audioClipsFound > 0) {
+        for (var v = 0; v < sequence.videoTracks.numTracks; v++) {
+          var videoTrack = sequence.videoTracks[v]
+
+          for (var vc = 0; vc < videoTrack.clips.numItems; vc++) {
+            var clip = videoTrack.clips[vc]
+            if (clip) {
+              var clipStart = parseFloat(clip.start.seconds)
+              var clipEnd = parseFloat(clip.end.seconds)
+              var clipDuration = clipEnd - clipStart
+
+              // Check if this clip matches our silence segment (within tolerance)
+              if (
+                Math.abs(clipStart - segmentStart) < tolerance &&
+                Math.abs(clipEnd - segmentEnd) < tolerance &&
+                Math.abs(clipDuration - segmentDuration) < tolerance
+              ) {
+                // Mark this clip for removal
+                clipsToRemove.push({
+                  clip: clip,
+                  trackIndex: v,
+                  clipIndex: vc,
+                  isVideo: true,
+                  name: clip.name || 'Video Silence',
+                  startTime: clipStart,
+                  endTime: clipEnd,
+                  duration: clipDuration,
+                  segmentId: segment.id
+                })
+
+                logMessage(
+                  'Found matching video clip to remove: ' +
+                    clip.name +
+                    ' (' +
+                    clipStart +
+                    's to ' +
+                    clipEnd +
+                    's, duration: ' +
+                    clipDuration +
+                    's)'
+                )
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (clipsToRemove.length === 0) {
+      return JSON.stringify({
+        success: false,
+        message: 'No silence clips found matching the specified time ranges'
+      })
+    }
+
+    logMessage('Found ' + clipsToRemove.length + ' silence clips to remove (keeping gaps)')
+
+    // Sort clips by start time (latest first) to prevent index shifting during removal
+    clipsToRemove.sort(function (a, b) {
+      return b.startTime - a.startTime
+    })
+
+    var clipsRemoved = 0
+    var results = []
+    var errors = []
+
+    // Remove each identified silence clip using proper removal with gaps preserved
+    for (var i = 0; i < clipsToRemove.length; i++) {
+      var clipData = clipsToRemove[i]
+
+      try {
+        // Use proper deletion with ripple: false to maintain gaps
+        var result = properDeleteClip(
+          clipData.trackIndex,
+          clipData.clipIndex,
+          clipData.isVideo,
+          false // ripple = false to maintain gaps
+        )
+
+        if (result.success) {
+          clipsRemoved++
+          results.push({
+            track: clipData.trackIndex + 1,
+            type: clipData.isVideo ? 'video' : 'audio',
+            name: clipData.name,
+            method: result.method,
+            segmentId: clipData.segmentId,
+            timeRange: clipData.startTime + 's to ' + clipData.endTime + 's',
+            duration: clipData.duration + 's'
+          })
+          logMessage(
+            'Removed silence clip (gap preserved): ' +
+              clipData.name +
+              ' (duration: ' +
+              clipData.duration +
+              's)'
+          )
+        } else {
+          errors.push('Failed to remove clip: ' + clipData.name + ' - ' + result.error)
+          logMessage('Failed to remove: ' + clipData.name + ' - ' + result.error)
+        }
+      } catch (removeError) {
+        errors.push('Error removing clip: ' + clipData.name + ' - ' + removeError.toString())
+        logMessage('Error removing: ' + clipData.name + ' - ' + removeError.toString())
+      }
+    }
+
+    var message = 'Removed ' + clipsRemoved + ' silence clip(s) with gaps preserved'
+    if (errors.length > 0) {
+      message += ' with ' + errors.length + ' error(s)'
+    }
+
+    return JSON.stringify({
+      success: clipsRemoved > 0,
+      message: message,
+      clipsRemoved: clipsRemoved,
+      totalClipsFound: clipsToRemove.length,
+      removedClips: results,
+      errors: errors
+    })
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: 'Silence removal with gaps failed: ' + error.toString()
+    })
+  }
+}
+
 // ==== EMBEDDED PRESET DATA ====
 // This is the complete XML content of the "Waveform Audio 48kHz 16-bit.epr" preset
 

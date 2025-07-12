@@ -20,7 +20,9 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
   const [silenceThreshold, setSilenceThreshold] = useState<number>(-30)
   const [minSilenceLen, setMinSilenceLen] = useState<number>(200)
   const [padding, setPadding] = useState<number>(150)
-  const [silenceManagement, setSilenceManagement] = useState<'remove' | 'keep' | 'mute'>('remove')
+  const [silenceManagement, setSilenceManagement] = useState<
+    'remove' | 'keep' | 'mute' | 'removeWithGaps'
+  >('remove')
   const [, setStatus] = useState<string>('Waiting for Premiere Pro connection...')
   const [sequenceInfo, setSequenceInfo] = useState<{
     success: boolean
@@ -589,7 +591,9 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
             </div>
             <RadioGroup
               value={silenceManagement}
-              onValueChange={(value) => setSilenceManagement(value as 'remove' | 'keep' | 'mute')}
+              onValueChange={(value) =>
+                setSilenceManagement(value as 'remove' | 'keep' | 'mute' | 'removeWithGaps')
+              }
             >
               <div className="flex items-center gap-3">
                 <RadioGroupItem value="remove" id="remove" />
@@ -607,6 +611,12 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
                 <RadioGroupItem value="mute" id="mute" />
                 <Label htmlFor="mute" className="text-xs text-foreground">
                   Mute
+                </Label>
+              </div>
+              <div className="flex items-center gap-3">
+                <RadioGroupItem value="removeWithGaps" id="removeWithGaps" />
+                <Label htmlFor="removeWithGaps" className="text-xs text-foreground">
+                  Remove (maintain gaps)
                 </Label>
               </div>
             </RadioGroup>

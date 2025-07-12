@@ -597,6 +597,68 @@ app.whenReady().then(() => {
     }
   )
 
+  // Handler for removing silence segments with gaps
+  ipcMain.handle(
+    'remove-silence-segments-with-gaps',
+    async (_, sessionId?: string, segmentIds?: string[]) => {
+      if (!premiereSocket) {
+        throw new Error('Premiere Pro is not connected.')
+      }
+
+      const targetSessionId = sessionId || currentSilenceSession?.id
+      if (!targetSessionId) {
+        throw new Error('No active silence session found.')
+      }
+
+      const session = sessionId ? silenceSessionHistory.get(sessionId) : currentSilenceSession
+      if (!session) {
+        throw new Error('Silence session not found.')
+      }
+
+      // Get deletable segments (processed but not deleted)
+      const removableSegments = getDeletableSilenceSegments(targetSessionId)
+
+      // If no specific segment IDs provided, remove all removable segments
+      const segmentsToRemove = segmentIds
+        ? removableSegments.filter((segment) => segmentIds.includes(segment.id))
+        : removableSegments
+
+      if (segmentsToRemove.length === 0) {
+        throw new Error('No removable silence segments found.')
+      }
+
+      // Send remove with gaps request to Premiere Pro
+      const removeCommands = segmentsToRemove.map((segment) => ({
+        start: segment.start,
+        end: segment.end,
+        id: segment.id
+      }))
+
+      premiereSocket.send(
+        JSON.stringify({
+          type: 'request_remove_silences_with_gaps',
+          payload: removeCommands,
+          sessionId: targetSessionId
+        })
+      )
+
+      console.log('Sent remove silence with gaps requests to Premiere:', removeCommands)
+
+      // Mark segments as processed (removed)
+      markSegmentsAsDeleted(
+        targetSessionId,
+        segmentsToRemove.map((s) => s.id)
+      )
+
+      return {
+        success: true,
+        message: `Remove with gaps request sent for ${segmentsToRemove.length} silence segments.`,
+        removedSegments: segmentsToRemove.length,
+        sessionId: targetSessionId
+      }
+    }
+  )
+
   // Handler for muting silence segments
   ipcMain.handle('mute-silence-segments', async (_, sessionId?: string, segmentIds?: string[]) => {
     if (!premiereSocket) {
@@ -981,6 +1043,22 @@ app.whenReady().then(() => {
 
             // Notify renderer about muting completion
             safelyNotifyRenderer('silence-muting-completed', {
+              sessionId:
+                parsedMessage.sessionId ||
+                (currentSilenceSession ? currentSilenceSession.id : null),
+              result: parsedMessage.payload
+            })
+            break
+
+          case 'remove_silences_with_gaps_response':
+            // Handle response from Premiere Pro after silence removal with gaps
+            console.log(
+              'Received remove silences with gaps response from Premiere:',
+              parsedMessage.payload
+            )
+
+            // Notify renderer about removal completion
+            safelyNotifyRenderer('silence-removal-with-gaps-completed', {
               sessionId:
                 parsedMessage.sessionId ||
                 (currentSilenceSession ? currentSilenceSession.id : null),

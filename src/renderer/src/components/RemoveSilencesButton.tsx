@@ -71,7 +71,7 @@ interface RemoveSilencesButtonProps {
   selectedRange: 'entire' | 'inout' | 'selected'
   sequenceInfo: SequenceInfo | null
   premiereConnected: boolean
-  silenceManagement: 'remove' | 'keep' | 'mute'
+  silenceManagement: 'remove' | 'keep' | 'mute' | 'removeWithGaps'
 
   // Callback functions
   onStatusUpdate: (status: string) => void
@@ -158,6 +158,28 @@ Found and removed ${deleteResult.deletedSegments || 'multiple'} silence segments
       } catch (deleteError) {
         console.error('Deletion error:', deleteError)
         const errorMsg = `Silence processing completed, but deletion failed: ${deleteError}`
+        onStatusUpdate(errorMsg)
+        onError?.(errorMsg)
+      }
+    } else if (silenceManagement === 'removeWithGaps') {
+      onStatusUpdate('Removing silence segments (keeping gaps)...')
+
+      try {
+        const removeResult = await window.cleanCutAPI.removeSilenceSegmentsWithGaps(sessionId)
+
+        if (removeResult.success) {
+          const successMessage = `Silence processing completed successfully!
+Found and removed ${removeResult.removedSegments || 'multiple'} silence segments from the timeline (gaps preserved).`
+          onStatusUpdate(successMessage)
+          onSuccess?.(successMessage)
+        } else {
+          const errorMessage = `Silence processing completed, but removal failed: ${removeResult.error || 'Unknown error'}`
+          onStatusUpdate(errorMessage)
+          onError?.(errorMessage)
+        }
+      } catch (removeError) {
+        console.error('Removal error:', removeError)
+        const errorMsg = `Silence processing completed, but removal failed: ${removeError}`
         onStatusUpdate(errorMsg)
         onError?.(errorMsg)
       }
@@ -263,6 +285,10 @@ Found and muted ${muteResult.mutedSegments || 'multiple'} silence segments in th
             // User wants to remove silences - wait for segments to be processed, then delete
             onStatusUpdate('Silence processing completed! Waiting for timeline cuts to finish...')
             setPendingDeletion(true)
+          } else if (silenceManagement === 'removeWithGaps') {
+            // User wants to remove silences but keep gaps - wait for segments to be processed, then delete with gaps
+            onStatusUpdate('Silence processing completed! Waiting for timeline cuts to finish...')
+            setPendingDeletion(true) // We'll reuse this for removeWithGaps workflow
           } else if (silenceManagement === 'mute') {
             // User wants to mute silences - wait for segments to be processed, then mute
             onStatusUpdate('Silence processing completed! Waiting for timeline cuts to finish...')
@@ -310,6 +336,8 @@ Silence segments have been preserved as requested.`
 
     if (silenceManagement === 'remove') {
       return 'Find & Remove Silences'
+    } else if (silenceManagement === 'removeWithGaps') {
+      return 'Find & Remove Silences (Keep Gaps)'
     } else if (silenceManagement === 'mute') {
       return 'Find & Mute Silences'
     } else {

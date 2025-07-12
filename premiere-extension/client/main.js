@@ -754,6 +754,31 @@ function connect() {
             }
             break
 
+          case 'request_remove_silences_with_gaps':
+            // Handle silence removal with gaps request
+            addLogEntry(
+              `Received remove silences with gaps request for ${message.payload.length} segments`,
+              'info'
+            )
+
+            // Convert silence segments to clip selection and removal (keep gaps)
+            const removeWithGapsResult = cs.evalScript(
+              `removeSilenceSegmentsWithGaps('${JSON.stringify(message.payload)}')`
+            )
+            addLogEntry(`Remove silences with gaps result: ${removeWithGapsResult}`, 'info')
+
+            // Send response back to confirm removal
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(
+                JSON.stringify({
+                  type: 'remove_silences_with_gaps_response',
+                  payload: removeWithGapsResult,
+                  sessionId: message.sessionId
+                })
+              )
+            }
+            break
+
           case 'request_sequence_info':
             console.log('Received request for sequence info')
             addLogEntry('Received sequence info request', 'info')

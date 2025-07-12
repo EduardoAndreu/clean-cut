@@ -135,6 +135,16 @@ declare global {
         deletedSegments?: number
         sessionId?: string
       }>
+      removeSilenceSegmentsWithGaps: (
+        sessionId?: string,
+        segmentIds?: string[]
+      ) => Promise<{
+        success: boolean
+        message?: string
+        error?: string
+        removedSegments?: number
+        sessionId?: string
+      }>
       muteSilenceSegments: (
         sessionId?: string,
         segmentIds?: string[]
