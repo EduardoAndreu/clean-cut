@@ -1,21 +1,6 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 
-interface FileDialogResult {
-  filePath: string
-  fileName: string
-}
-
 interface CleanCutAPI {
-  invokeCleanCut: (
-    filePath: string,
-    threshold: number,
-    minSilenceLen: number,
-    padding: number,
-    options?: {
-      selectedAudioTracks?: number[]
-      selectedRange?: 'entire' | 'inout' | 'selected'
-    }
-  ) => Promise<number[][]>
   exportAudio: (
     exportFolder: string,
     options: {
@@ -30,9 +15,7 @@ interface CleanCutAPI {
     padding: number
   ) => Promise<{ success: boolean; message: string; silenceCount?: number; error?: string }>
   analyzeAudio: (filePath: string) => Promise<{ success: boolean; data?: any; error?: string }>
-  showOpenDialog: () => Promise<FileDialogResult | null>
   requestSequenceInfo: () => Promise<{ success: boolean; message: string }>
-  requestSelectedClipsInfo: () => Promise<{ success: boolean; message: string }>
 }
 
 declare global {
@@ -40,16 +23,6 @@ declare global {
     electron: ElectronAPI
     api: {}
     cleanCutAPI: {
-      invokeCleanCut: (
-        filePath: string,
-        threshold: number,
-        minSilenceLen: number,
-        padding: number,
-        options?: {
-          selectedAudioTracks?: number[]
-          selectedRange?: 'entire' | 'inout' | 'selected'
-        }
-      ) => Promise<number[][]>
       exportAudio: (
         exportFolder: string,
         options: {
@@ -92,15 +65,7 @@ declare global {
         data?: any
         error?: string
       }>
-      showOpenDialog: () => Promise<{
-        filePath: string
-        fileName: string
-      } | null>
       requestSequenceInfo: () => Promise<{
-        success: boolean
-        message: string
-      }>
-      requestSelectedClipsInfo: () => Promise<{
         success: boolean
         message: string
       }>

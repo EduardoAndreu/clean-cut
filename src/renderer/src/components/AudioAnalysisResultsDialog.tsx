@@ -17,7 +17,7 @@ interface AudioAnalysisResultsDialogProps {
 
 function AudioAnalysisResultsDialog({
   analysisResult,
-  onStatusUpdate,
+  onStatusUpdate: _onStatusUpdate,
   className
 }: AudioAnalysisResultsDialogProps): React.JSX.Element {
   return (

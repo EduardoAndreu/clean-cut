@@ -277,35 +277,6 @@ function connect() {
             addLogEntry('Handshake acknowledged by server', 'success')
             break
 
-          case 'request_audio_path':
-            console.log('Received request for audio path')
-            addLogEntry('Received audio export request', 'info')
-
-            // Call ExtendScript function to export active sequence audio
-            cs.evalScript('exportActiveSequenceAudio()', function (result) {
-              console.log('Audio export result:', result)
-
-              try {
-                const resultData = JSON.parse(result)
-                if (resultData.success) {
-                  addLogEntry(`Audio exported: ${resultData.filePath}`, 'success')
-                } else {
-                  addLogEntry(`Export failed: ${resultData.error}`, 'error')
-                }
-              } catch (e) {
-                addLogEntry(`Audio exported to: ${result}`, 'success')
-              }
-
-              // Send the file path back to the server
-              const response = {
-                type: 'audio_path_response',
-                payload: result
-              }
-              ws.send(JSON.stringify(response))
-              console.log('Audio path response sent:', response)
-            })
-            break
-
           case 'request_cuts':
             console.log('Received request to perform cuts:', message.payload)
             addLogEntry(`Performing ${message.payload.length} cuts...`, 'info')
@@ -513,38 +484,6 @@ function connect() {
             })
             break
 
-          case 'request_selected_clips_info':
-            console.log('Received request for selected clips info')
-            addLogEntry('Received selected clips info request', 'info')
-
-            // Call ExtendScript function to get selected clips info
-            cs.evalScript('getSelectedClipsInfo()', function (result) {
-              console.log('Selected clips info result:', result)
-
-              try {
-                const resultData = JSON.parse(result)
-                if (resultData.success) {
-                  addLogEntry(
-                    `Selected clips info retrieved: ${resultData.selectedClips.length} clips`,
-                    'success'
-                  )
-                } else {
-                  addLogEntry(`Failed to get selected clips info: ${resultData.error}`, 'error')
-                }
-              } catch (e) {
-                addLogEntry('Selected clips info retrieved', 'success')
-              }
-
-              // Send the selected clips info back to the server
-              const response = {
-                type: 'selected_clips_info_response',
-                payload: result
-              }
-              ws.send(JSON.stringify(response))
-              console.log('Selected clips info response sent:', response)
-            })
-            break
-
           case 'request_audio_export':
             console.log('Received request for audio export:', message.payload)
             addLogEntry('Received audio export request', 'info')
@@ -590,58 +529,6 @@ function connect() {
               }
               ws.send(JSON.stringify(response))
               console.log('Audio export response sent:', response)
-            })
-            break
-
-          case 'request_audio_export_and_process':
-            console.log('Received request for audio export and process:', message.payload)
-            addLogEntry('Received audio export and process request', 'info')
-
-            const {
-              exportFolder: exportFolderProcess,
-              selectedTracks: selectedTracksProcess,
-              selectedRange: selectedRangeProcess
-            } = message.payload
-            const selectedTracksJsonProcess = JSON.stringify(selectedTracksProcess)
-
-            addLogEntry(
-              `Exporting audio for processing: ${selectedTracksProcess.length} tracks, range: ${selectedRangeProcess}`,
-              'info'
-            )
-
-            // Call ExtendScript function to export sequence audio with specific parameters
-            const scriptCallProcess = `exportSequenceAudio('${exportFolderProcess}', '${selectedTracksJsonProcess}', '${selectedRangeProcess}')`
-            addLogEntry(`ExtendScript call: ${scriptCallProcess}`, 'info')
-
-            cs.evalScript(scriptCallProcess, function (result) {
-              console.log('Audio export result for processing:', result)
-
-              try {
-                const resultData = JSON.parse(result)
-                if (resultData.success) {
-                  addLogEntry(`Audio exported for processing: ${resultData.outputPath}`, 'success')
-                  if (resultData.presetUsed) {
-                    addLogEntry(`Preset used: ${resultData.presetUsed}`, 'info')
-                  }
-                } else {
-                  addLogEntry(`Export failed: ${resultData.error}`, 'error')
-                }
-              } catch (e) {
-                // Handle non-JSON response (might be just the file path)
-                if (result && result.length > 0) {
-                  addLogEntry(`Audio exported for processing to: ${result}`, 'success')
-                } else {
-                  addLogEntry('Export operation completed', 'success')
-                }
-              }
-
-              // Send the export result back to the server for processing
-              const response = {
-                type: 'audio_export_and_process_response',
-                payload: result
-              }
-              ws.send(JSON.stringify(response))
-              console.log('Audio export and process response sent:', response)
             })
             break
 

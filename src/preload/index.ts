@@ -6,17 +6,6 @@ const api = {}
 
 // Clean Cut API for audio processing
 const cleanCutAPI = {
-  invokeCleanCut: (
-    filePath: string,
-    threshold: number,
-    minSilenceLen: number,
-    padding: number,
-    options?: {
-      selectedAudioTracks?: number[]
-      selectedRange?: 'entire' | 'inout' | 'selected'
-    }
-  ) =>
-    ipcRenderer.invoke('run-clean-cut', { filePath, threshold, minSilenceLen, padding, options }),
   exportAudio: (
     exportFolder: string,
     options: {
@@ -42,9 +31,7 @@ const cleanCutAPI = {
       options
     }),
   analyzeAudio: (filePath: string) => ipcRenderer.invoke('analyze-audio', filePath),
-  showOpenDialog: () => ipcRenderer.invoke('show-open-dialog'),
   requestSequenceInfo: () => ipcRenderer.invoke('request-sequence-info'),
-  requestSelectedClipsInfo: () => ipcRenderer.invoke('request-selected-clips-info'),
   getSilenceSession: (sessionId?: string) => ipcRenderer.invoke('get-silence-session', sessionId),
   deleteSilenceSegments: (sessionId?: string, segmentIds?: string[]) =>
     ipcRenderer.invoke('delete-silence-segments', sessionId, segmentIds),

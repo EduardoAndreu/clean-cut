@@ -1,13 +1,6 @@
 import { Info } from 'lucide-react'
 import { Button } from './button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger
-} from './dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './dialog'
 
 interface InfoDialogProps {
   title: string
