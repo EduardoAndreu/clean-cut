@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- NOTE: The port value should be kept in sync with config.js WEBSOCKET_CONFIG.PORT -->
 <ExtensionList>
   <Extension Id="com.cleancut.panel">
     <HostList>

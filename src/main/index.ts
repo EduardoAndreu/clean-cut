@@ -4,6 +4,7 @@ import { spawn } from 'child_process'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { WebSocketServer, WebSocket } from 'ws'
 import icon from '../../resources/icon.png?asset'
+import { PYTHON_BACKEND_PATHS, WEBSOCKET_CONFIG } from '../shared/config'
 
 // Interface for clean cut arguments
 interface CleanCutArgs {
@@ -109,7 +110,7 @@ function markSegmentsAsDeleted(sessionId: string, segmentIds: string[]): void {
 // Function to process audio file using VAD-based Python script
 async function processAudioFile(filePath: string, params: CleanCutArgs): Promise<number[][]> {
   const { threshold, minSilenceLen, padding } = params
-  const scriptPath = join(__dirname, '../../python-backend/vad_cutter.py')
+  const scriptPath = join(__dirname, PYTHON_BACKEND_PATHS.VAD_CUTTER)
 
   console.log('=== PYTHON EXECUTION (VAD-Based Approach) ===')
   console.log('Script path:', scriptPath)
@@ -118,7 +119,7 @@ async function processAudioFile(filePath: string, params: CleanCutArgs): Promise
 
   return new Promise((resolve, reject) => {
     // Use Python from virtual environment
-    const pythonPath = join(__dirname, '../../python-backend/.venv/bin/python')
+    const pythonPath = join(__dirname, PYTHON_BACKEND_PATHS.PYTHON_EXECUTABLE)
     const pythonProcess = spawn(pythonPath, [
       scriptPath,
       filePath,
@@ -329,8 +330,8 @@ app.whenReady().then(() => {
   // Handler for analyzing audio with VAD (Voice Activity Detection)
   ipcMain.handle('analyze-audio', async (_, filePath: string) => {
     try {
-      const pythonPath = join(__dirname, '../../python-backend/.venv/bin/python')
-      const scriptPath = join(__dirname, '../../python-backend/vad_analyzer.py')
+      const pythonPath = join(__dirname, PYTHON_BACKEND_PATHS.PYTHON_EXECUTABLE)
+      const scriptPath = join(__dirname, PYTHON_BACKEND_PATHS.VAD_ANALYZER)
 
       console.log('=== VAD AUDIO ANALYSIS ===')
       console.log('Script path:', scriptPath)
@@ -687,7 +688,7 @@ app.whenReady().then(() => {
   })
 
   // Create WebSocket server for Premiere Pro communication
-  const wss = new WebSocketServer({ port: 8085 })
+  const wss = new WebSocketServer({ port: WEBSOCKET_CONFIG.PORT })
 
   wss.on('connection', (ws: WebSocket) => {
     console.log('Premiere Pro connected via WebSocket')
@@ -855,7 +856,7 @@ app.whenReady().then(() => {
     console.error('WebSocket server error:', error)
   })
 
-  console.log('WebSocket server started on port 8085')
+  console.log(`WebSocket server started on port ${WEBSOCKET_CONFIG.PORT}`)
 
   createWindow()
 

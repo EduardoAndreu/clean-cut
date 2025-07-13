@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Button } from './ui/button'
+import { EXPORT_LOCATION } from '../../../shared/config'
 
 interface SequenceInfo {
   success: boolean
@@ -101,9 +102,6 @@ function RemoveSilencesButton({
   const [isProcessing, setIsProcessing] = useState<boolean>(false)
   const [currentSession, setCurrentSession] = useState<SilenceSession | null>(null)
   const [pendingDeletion, setPendingDeletion] = useState<boolean>(false)
-
-  // Hardcoded export location for processing
-  const EXPORT_LOCATION = '/Users/ea/Downloads'
 
   // Listen for silence session updates to handle deletion timing
   useEffect(() => {

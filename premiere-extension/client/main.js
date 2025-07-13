@@ -4,7 +4,9 @@ const cs = new CSInterface()
 let ws = null
 let reconnectAttempts = 0
 const maxReconnectAttempts = 10
-const WEBSOCKET_PORT = 8085
+
+// Import configuration from config.js (loaded via script tag)
+const WEBSOCKET_PORT = WEBSOCKET_CONFIG.PORT
 
 // Logging functionality
 function addLogEntry(message, type = 'info') {

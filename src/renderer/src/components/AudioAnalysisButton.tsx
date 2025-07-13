@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button } from './ui/button'
 import { Loader2 } from 'lucide-react'
+import { EXPORT_LOCATION } from '../../../shared/config'
 
 interface AudioAnalysisResult {
   suggestions: {
@@ -29,9 +30,6 @@ function AudioAnalysisButton({
   className
 }: AudioAnalysisButtonProps): React.JSX.Element {
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false)
-
-  // Hardcoded export location for analysis
-  const EXPORT_LOCATION = '/Users/ea/Downloads'
 
   const handleAnalyzeAudio = async () => {
     if (!premiereConnected) {
