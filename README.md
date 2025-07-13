@@ -67,19 +67,10 @@ reg add "HKCU\Software\Adobe\CSXS.11" /v PlayerDebugMode /t REG_DWORD /d 1
 3. Go to **Window > Extensions > Clean-Cut**
 4. Configure settings and process audio
 
-## Build
-
-```bash
-npm run build:mac    # macOS
-npm run build:win    # Windows (untested)
-npm run build:linux  # Linux (untested)
-```
-
 ## Troubleshooting
 
 - **Extension not visible**: Verify symlink/link and restart Premiere Pro
 - **Connection issues**: Ensure app is running (port 8085)
-- **Processing errors**: Check Python virtual environment is activated
 
 ## License
 
