@@ -15,17 +15,17 @@ def analyze_speech_with_vad(audio_file):
     """
     Use Silero VAD to detect speech segments and provide a single threshold suggestion.
     """
-    print(f"Analyzing audio file with VAD: {audio_file}")
+    print(f"🔍 Analyzing audio file: {audio_file}", file=sys.stderr)
     
     # Load Silero VAD model and audio file.
     # VAD model expects 16kHz audio, read_audio handles resampling.
-    print("Loading Silero VAD model and audio...")
+    print("📥 Loading VAD model and audio...", file=sys.stderr)
     model = load_silero_vad()
     wav = read_audio(audio_file)
     audio = AudioSegment.from_wav(audio_file)
     
     # Get speech timestamps from VAD
-    print("Detecting speech segments...")
+    print("🎤 Detecting speech segments...", file=sys.stderr)
     speech_timestamps = get_speech_timestamps(
         wav, 
         model,
@@ -33,10 +33,9 @@ def analyze_speech_with_vad(audio_file):
         min_silence_duration_ms=200,
         return_seconds=True
     )
-    print(f"Detected {len(speech_timestamps)} speech segments.")
-        
+    
     # Analyze audio levels and separate into speech/silence db lists in one pass
-    print("Analyzing audio levels...")
+    print("📊 Analyzing audio levels...", file=sys.stderr)
     audio_array = np.array(audio.get_array_of_samples())
     if audio.channels == 2:
         audio_array = audio_array.reshape((-1, 2)).mean(axis=1)
@@ -75,6 +74,9 @@ def analyze_speech_with_vad(audio_file):
     # Suggest a threshold halfway between the average speech and silence levels
     vad_recommended_threshold = (avg_speech_db + avg_silence_db) / 2
 
+    print(f"✅ Analysis complete: {len(speech_timestamps)} speech segments found", file=sys.stderr)
+    print(f"🎯 Recommended threshold: {round(vad_recommended_threshold)}dB", file=sys.stderr)
+
     # The single, dynamic suggestion for the UI
     suggestions = {
         'vad_recommended': {
@@ -107,7 +109,7 @@ def main():
     try:
         analyze_speech_with_vad(audio_file)
     except Exception as e:
-        print(f"Error analyzing audio: {e}", file=sys.stderr)
+        print(f"❌ Error analyzing audio: {e}", file=sys.stderr)
         sys.exit(1)
 
 

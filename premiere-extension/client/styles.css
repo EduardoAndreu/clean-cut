@@ -81,15 +81,15 @@ body {
   margin-left: 16px;
 }
 
-.connected {
+.status-indicator.connected {
   background-color: #4caf50;
 }
 
-.disconnected {
+.status-indicator.disconnected {
   background-color: #f44336;
 }
 
-.connecting {
+.status-indicator.connecting {
   background-color: #ff9800;
 }
 

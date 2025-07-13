@@ -121,10 +121,7 @@ async function processAudioFile(filePath: string, params: CleanCutArgs): Promise
   const { threshold, minSilenceLen, padding } = params
   const scriptPath = join(__dirname, PYTHON_BACKEND_PATHS.VAD_CUTTER)
 
-  console.log('=== PYTHON EXECUTION (VAD-Based Approach) ===')
-  console.log('Script path:', scriptPath)
-  console.log('File path:', filePath)
-  console.log('Parameters:', params)
+  console.log('🐍 Starting Python VAD processing')
 
   return new Promise((resolve, reject) => {
     // Use Python from virtual environment
@@ -141,40 +138,32 @@ async function processAudioFile(filePath: string, params: CleanCutArgs): Promise
     let stderr = ''
 
     pythonProcess.stdout.on('data', (data) => {
-      const chunk = data.toString()
-      console.log('Python stdout chunk:', chunk)
-      stdout += chunk
+      stdout += data.toString()
     })
 
     pythonProcess.stderr.on('data', (data) => {
-      const chunk = data.toString()
-      console.log('Python stderr chunk:', chunk)
-      stderr += chunk
+      stderr += data.toString()
     })
 
     pythonProcess.on('close', (code) => {
-      console.log('Python process closed with code:', code)
-      console.log('Full stdout:', stdout)
-      console.log('Full stderr:', stderr)
-
       if (code === 0) {
         try {
           const timestamps = JSON.parse(stdout.trim())
-          console.log('Parsed timestamps:', timestamps)
-          console.log('Timestamps length:', timestamps.length)
+          console.log(`✅ VAD processing completed: ${timestamps.length} silence regions found`)
           resolve(timestamps)
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error)
-          console.error('JSON parse error:', errorMessage)
+          console.error('❌ Failed to parse Python output:', errorMessage)
           reject(new Error(`Failed to parse Python output: ${errorMessage}`))
         }
       } else {
+        console.error('❌ Python VAD processing failed:', stderr)
         reject(new Error(`Python script failed with code ${code}: ${stderr}`))
       }
     })
 
     pythonProcess.on('error', (error) => {
-      console.error('Failed to start Python process:', error.message)
+      console.error('❌ Failed to start Python process:', error.message)
       reject(new Error(`Failed to start Python process: ${error.message}`))
     })
   })
@@ -258,10 +247,9 @@ app.whenReady().then(() => {
     try {
       premiereSocket.send(JSON.stringify({ type: 'request_sequence_info' }))
     } catch (error) {
-      console.error('Failed to send sequence info request to Premiere Pro:', error)
+      console.error('❌ Failed to send sequence info request:', error)
       throw new Error('Failed to communicate with Premiere Pro')
     }
-    console.log('Sent request_sequence_info to Premiere Pro')
 
     return { success: true, message: 'Sequence info request sent to Premiere Pro' }
   })
@@ -330,12 +318,7 @@ app.whenReady().then(() => {
               }
             })
           )
-          console.log(
-            'Sent request_audio_export to Premiere Pro with temp directory:',
-            tempExportDir,
-            'requestId:',
-            requestId
-          )
+          console.log('📤 Sent audio export request to Premiere Pro')
         })
 
         // After successful export, track any files created in the directory
@@ -359,9 +342,7 @@ app.whenReady().then(() => {
       const pythonPath = join(__dirname, PYTHON_BACKEND_PATHS.PYTHON_EXECUTABLE)
       const scriptPath = join(__dirname, PYTHON_BACKEND_PATHS.VAD_ANALYZER)
 
-      console.log('=== VAD AUDIO ANALYSIS ===')
-      console.log('Script path:', scriptPath)
-      console.log('File path:', filePath)
+      console.log('🔍 Starting audio analysis')
 
       const result = await new Promise((resolve, reject) => {
         const pythonProcess = spawn(pythonPath, [scriptPath, filePath])
@@ -378,8 +359,6 @@ app.whenReady().then(() => {
         })
 
         pythonProcess.on('close', (code) => {
-          console.log('Audio analysis process closed with code:', code)
-
           if (code === 0) {
             try {
               // Extract JSON from stdout (between JSON_OUTPUT_START and JSON_OUTPUT_END)
@@ -391,24 +370,24 @@ app.whenReady().then(() => {
               if (startIndex !== -1 && endIndex !== -1) {
                 const jsonData = stdout.substring(startIndex + startMarker.length, endIndex).trim()
                 const analysisData = JSON.parse(jsonData)
-                console.log('Audio analysis completed successfully')
+                console.log('✅ Audio analysis completed')
                 resolve({ success: true, data: analysisData })
               } else {
                 throw new Error('Could not find JSON output markers in analysis result')
               }
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : String(error)
-              console.error('Failed to parse analysis output:', errorMessage)
+              console.error('❌ Failed to parse analysis output:', errorMessage)
               reject(new Error(`Failed to parse analysis output: ${errorMessage}`))
             }
           } else {
-            console.error('Audio analysis failed:', stderr)
+            console.error('❌ Audio analysis failed:', stderr)
             reject(new Error(`Audio analysis failed: ${stderr}`))
           }
         })
 
         pythonProcess.on('error', (error) => {
-          console.error('Failed to start audio analysis process:', error.message)
+          console.error('❌ Failed to start audio analysis process:', error.message)
           reject(new Error(`Failed to start audio analysis process: ${error.message}`))
         })
       })
@@ -416,7 +395,7 @@ app.whenReady().then(() => {
       return result
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      console.error('Audio analysis error:', errorMessage)
+      console.error('❌ Audio analysis error:', errorMessage)
       return { success: false, error: errorMessage }
     } finally {
       // Clean up the temporary directory containing the exported file
@@ -443,9 +422,7 @@ app.whenReady().then(() => {
       const { filePath, silenceThreshold, minSilenceLen, padding, options } = params
 
       try {
-        console.log('=== PROCESSING SILENCES ===')
-        console.log('File path:', filePath)
-        console.log('Parameters:', params)
+        console.log('🔄 Processing silences')
 
         // Process the audio file using the existing function
         const silenceRanges = await processAudioFile(filePath, {
@@ -467,8 +444,7 @@ app.whenReady().then(() => {
         currentSilenceSession = silenceSession
         silenceSessionHistory.set(silenceSession.id, silenceSession)
 
-        console.log('Created silence session:', silenceSession.id)
-        console.log('Silence segments:', silenceSession.segments.length)
+        console.log(`📝 Created silence session: ${silenceSession.segments.length} segments`)
 
         // Convert to cut format expected by Premiere
         const cutCommands = silenceRanges.map((range: number[]) => ({
@@ -485,7 +461,7 @@ app.whenReady().then(() => {
               sessionId: silenceSession.id
             })
           )
-          console.log('Sent cut requests to Premiere:', cutCommands)
+          console.log('📤 Sent cut requests to Premiere Pro')
         }
 
         return {
@@ -497,7 +473,7 @@ app.whenReady().then(() => {
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
-        console.error('Silence processing error:', errorMessage)
+        console.error('❌ Silence processing error:', errorMessage)
         return { success: false, error: errorMessage }
       } finally {
         // Clean up the temporary directory containing the exported file
@@ -572,7 +548,7 @@ app.whenReady().then(() => {
         })
       )
 
-      console.log('Sent delete silence requests to Premiere:', deleteCommands)
+      console.log(`🗑️ Sent ${deleteCommands.length} delete requests to Premiere Pro`)
 
       // Mark segments as deleted
       markSegmentsAsDeleted(
@@ -634,7 +610,7 @@ app.whenReady().then(() => {
         })
       )
 
-      console.log('Sent remove silence with gaps requests to Premiere:', removeCommands)
+      console.log(`🕳️ Sent ${removeCommands.length} remove with gaps requests to Premiere Pro`)
 
       // Mark segments as processed (removed)
       markSegmentsAsDeleted(
@@ -694,7 +670,7 @@ app.whenReady().then(() => {
       })
     )
 
-    console.log('Sent mute silence requests to Premiere:', muteCommands)
+    console.log(`🔇 Sent ${muteCommands.length} mute requests to Premiere Pro`)
 
     // Mark segments as processed (muted)
     markSegmentsAsDeleted(
@@ -725,7 +701,7 @@ app.whenReady().then(() => {
   const wss = new WebSocketServer({ port: WEBSOCKET_CONFIG.PORT })
 
   wss.on('connection', (ws: WebSocket) => {
-    console.log('Premiere Pro connected via WebSocket')
+    console.log('🔗 Premiere Pro connected')
     premiereSocket = ws
 
     // Notify renderer process that Premiere is connected
@@ -734,13 +710,13 @@ app.whenReady().then(() => {
     ws.on('message', async (message: Buffer) => {
       try {
         const messageString = message.toString()
-        console.log('Received message from Premiere:', messageString)
         const parsedMessage = JSON.parse(messageString)
 
         switch (parsedMessage.type) {
           case 'handshake':
             // Handle initial handshake from Premiere Pro extension
-            console.log('Received handshake from Premiere Pro:', parsedMessage.payload)
+            console.log('🤝 Handshake received from Premiere Pro')
+            console.log('')
             // Send handshake acknowledgment back
             if (premiereSocket) {
               try {
@@ -750,22 +726,22 @@ app.whenReady().then(() => {
                     payload: 'clean-cut-app'
                   })
                 )
-                console.log('Sent handshake acknowledgment to Premiere Pro')
               } catch (error) {
-                console.error('Failed to send handshake acknowledgment:', error)
+                console.error('❌ Failed to send handshake acknowledgment:', error)
               }
             }
             break
 
           case 'sequence_info_response':
             // Forward sequence info to renderer process
-            console.log('Received sequence info from Premiere:', parsedMessage.payload)
+            console.log('📊 Sequence info received')
+            console.log('')
             safelyNotifyRenderer('sequence-info-update', parsedMessage.payload)
             break
 
           case 'audio_export_response':
             // Handle audio export result and resolve pending export request
-            console.log('Received audio export result from Premiere:', parsedMessage.payload)
+            console.log('✅ Audio export completed')
 
             // Try to parse the payload if it's a string
             let exportResult = parsedMessage.payload
@@ -773,7 +749,7 @@ app.whenReady().then(() => {
               try {
                 exportResult = JSON.parse(exportResult)
               } catch (e) {
-                console.error('Failed to parse audio export response payload:', e)
+                console.error('❌ Failed to parse audio export response:', e)
               }
             }
 
@@ -785,11 +761,9 @@ app.whenReady().then(() => {
               const requestId = pendingRequestIds[0] // Take the first pending request
               const resolver = pendingExportRequests.get(requestId)
               if (resolver) {
-                console.log('Resolving export request:', requestId, 'with result:', exportResult)
                 resolver(exportResult)
               }
             } else {
-              console.log('No pending export requests to resolve')
               // Still forward to renderer for any other listeners
               safelyNotifyRenderer('audio-export-result', exportResult)
             }
@@ -797,7 +771,7 @@ app.whenReady().then(() => {
 
           case 'cuts_response':
             // Handle response from Premiere Pro after cutting operations
-            console.log('Received cuts response from Premiere:', parsedMessage.payload)
+            console.log(`✅ Cuts completed`)
 
             // Mark silence segments as processed if we have a session
             if (
@@ -808,10 +782,6 @@ app.whenReady().then(() => {
               currentSilenceSession.segments.forEach((segment) => {
                 segment.processed = true
               })
-              console.log(
-                'Marked silence segments as processed for session:',
-                parsedMessage.sessionId
-              )
 
               // Notify renderer about the updated session
               safelyNotifyRenderer('silence-session-updated', {
@@ -823,7 +793,8 @@ app.whenReady().then(() => {
 
           case 'delete_silences_response':
             // Handle response from Premiere Pro after silence deletion
-            console.log('Received delete silences response from Premiere:', parsedMessage.payload)
+            console.log('✅ Silence deletion completed')
+            console.log('')
 
             // Notify renderer about deletion completion
             safelyNotifyRenderer('silence-deletion-completed', {
@@ -836,7 +807,8 @@ app.whenReady().then(() => {
 
           case 'mute_silences_response':
             // Handle response from Premiere Pro after silence muting
-            console.log('Received mute silences response from Premiere:', parsedMessage.payload)
+            console.log('✅ Silence muting completed')
+            console.log('')
 
             // Notify renderer about muting completion
             safelyNotifyRenderer('silence-muting-completed', {
@@ -849,10 +821,8 @@ app.whenReady().then(() => {
 
           case 'remove_silences_with_gaps_response':
             // Handle response from Premiere Pro after silence removal with gaps
-            console.log(
-              'Received remove silences with gaps response from Premiere:',
-              parsedMessage.payload
-            )
+            console.log('✅ Silence removal with gaps completed')
+            console.log('')
 
             // Notify renderer about removal completion
             safelyNotifyRenderer('silence-removal-with-gaps-completed', {
@@ -864,17 +834,17 @@ app.whenReady().then(() => {
             break
 
           default:
-            console.log('Unknown message type:', parsedMessage.type)
+            console.log('❓ Unknown message type:', parsedMessage.type)
             break
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
-        console.error('Error parsing WebSocket message:', errorMessage)
+        console.error('❌ Error parsing WebSocket message:', errorMessage)
       }
     })
 
     ws.on('close', () => {
-      console.log('Premiere Pro disconnected from WebSocket')
+      console.log('🔌 Premiere Pro disconnected')
       premiereSocket = null
 
       // Notify renderer process that Premiere is disconnected
@@ -882,15 +852,16 @@ app.whenReady().then(() => {
     })
 
     ws.on('error', (error) => {
-      console.error('WebSocket error:', error)
+      console.error('❌ WebSocket error:', error)
     })
   })
 
   wss.on('error', (error) => {
-    console.error('WebSocket server error:', error)
+    console.error('❌ WebSocket server error:', error)
   })
 
-  console.log(`WebSocket server started on port ${WEBSOCKET_CONFIG.PORT}`)
+  console.log(`🚀 WebSocket server started on port ${WEBSOCKET_CONFIG.PORT}`)
+  console.log('')
 
   createWindow()
 

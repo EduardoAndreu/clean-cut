@@ -37,7 +37,7 @@ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
       </Lifecycle>
       <UI>
         <Type>Panel</Type>
-        <Menu>Clean-Cut Launcher</Menu>
+        <Menu>Clean-Cut Extension</Menu>
         <Title>Clean-Cut</Title>
         <Geometry>
           <Size>

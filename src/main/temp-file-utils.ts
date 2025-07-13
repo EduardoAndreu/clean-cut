@@ -25,7 +25,6 @@ export function createTempDirectoryPath(): string {
   // Track this directory for cleanup
   activeTempDirs.add(tempDirPath)
 
-  console.log(`Created temporary directory path (Electron): ${tempDirPath}`)
   return tempDirPath
 }
 
@@ -37,10 +36,10 @@ export async function ensureTempDirectory(dirPath: string): Promise<void> {
   try {
     if (!existsSync(dirPath)) {
       await mkdir(dirPath, { recursive: true })
-      console.log(`Created temporary directory: ${dirPath}`)
+      console.log(`📁 Created temp directory`)
     }
   } catch (error) {
-    console.error(`Failed to create temporary directory ${dirPath}:`, error)
+    console.error(`❌ Failed to create temporary directory:`, error)
     throw error
   }
 }
@@ -64,12 +63,12 @@ export async function scanAndTrackPresetFiles(): Promise<string[]> {
     presetFiles.forEach((filePath) => activeTempFiles.add(filePath))
 
     if (presetFiles.length > 0) {
-      console.log(`Found and tracked ${presetFiles.length} preset files:`, presetFiles)
+      console.log(`👀 Found ${presetFiles.length} preset files`)
     }
 
     return presetFiles
   } catch (error) {
-    console.log(`Error scanning for preset files:`, error)
+    console.log(`⚠️ Error scanning for preset files:`, error)
     return []
   }
 }
@@ -80,7 +79,6 @@ export async function scanAndTrackPresetFiles(): Promise<string[]> {
  */
 export function trackPresetFile(presetPath: string): void {
   activeTempFiles.add(presetPath)
-  console.log(`Tracking preset file: ${presetPath}`)
 }
 
 /**
@@ -92,12 +90,9 @@ export async function cleanupPresetFiles(): Promise<void> {
     (file) => basename(file).startsWith('clean_cut_preset_') && file.endsWith('.epr')
   )
 
-  console.log(`Cleaning up ${presetFiles.length} preset files...`)
-
-  await Promise.all(presetFiles.map(cleanupTempFile))
-
   if (presetFiles.length > 0) {
-    console.log('All preset files cleaned up')
+    console.log(`🧹 Cleaning up ${presetFiles.length} preset files`)
+    await Promise.all(presetFiles.map(cleanupTempFile))
   }
 }
 
@@ -110,10 +105,8 @@ export async function cleanupTempFile(filePath: string): Promise<void> {
     // Check if file exists before trying to delete
     await access(filePath)
     await unlink(filePath)
-    console.log(`Cleaned up temporary file: ${filePath}`)
   } catch (error) {
     // File might not exist or already deleted - that's ok
-    console.log(`Temporary file already cleaned up or doesn't exist: ${filePath}`)
   } finally {
     // Always remove from tracking
     activeTempFiles.delete(filePath)
@@ -128,10 +121,10 @@ export async function cleanupTempDirectory(dirPath: string): Promise<void> {
   try {
     const { rm } = await import('fs/promises')
     await rm(dirPath, { recursive: true, force: true })
-    console.log(`Cleaned up temporary directory: ${dirPath}`)
+    console.log(`🧹 Cleaned up temp directory`)
+    console.log('')
   } catch (error) {
     // Directory might not exist or already deleted - that's ok
-    console.log(`Temporary directory already cleaned up or doesn't exist: ${dirPath}`)
   } finally {
     // Always remove from tracking
     activeTempDirs.delete(dirPath)
@@ -148,17 +141,15 @@ export async function cleanupAllTempFiles(): Promise<void> {
   const filesToClean = Array.from(activeTempFiles)
   const dirsToClean = Array.from(activeTempDirs)
 
-  console.log(
-    `Cleaning up ${filesToClean.length} temporary files and ${dirsToClean.length} temporary directories...`
-  )
+  if (filesToClean.length > 0 || dirsToClean.length > 0) {
+    console.log(`🧹 Cleaning up ${filesToClean.length} files and ${dirsToClean.length} directories`)
 
-  // Clean up files first, then directories
-  await Promise.all([
-    ...filesToClean.map(cleanupTempFile),
-    ...dirsToClean.map(cleanupTempDirectory)
-  ])
-
-  console.log('All temporary files and directories cleaned up')
+    // Clean up files first, then directories
+    await Promise.all([
+      ...filesToClean.map(cleanupTempFile),
+      ...dirsToClean.map(cleanupTempDirectory)
+    ])
+  }
 }
 
 /**
@@ -175,10 +166,9 @@ export async function trackExportedFilesInDirectory(dirPath: string): Promise<st
     // Track all files in the directory for cleanup
     fullPaths.forEach((filePath) => activeTempFiles.add(filePath))
 
-    console.log(`Tracking ${fullPaths.length} exported files in ${dirPath}`)
+    console.log(`📦 Tracking ${fullPaths.length} exported files`)
     return fullPaths
   } catch (error) {
-    console.log(`No files found in temporary directory ${dirPath}`)
     return []
   }
 }
@@ -211,11 +201,9 @@ export async function cleanupTempDirectoryContaining(filePath: string): Promise<
 
   // Check if this looks like one of our temp directories
   if (dirName && dirName.startsWith('cleancut_audio_')) {
-    console.log(`Cleaning up temp directory containing file: ${filePath}`)
     await cleanupTempDirectory(parentDir)
   } else {
     // Fallback to cleaning just the file if it's not in our temp directory
-    console.log(`File not in tracked temp directory, cleaning file only: ${filePath}`)
     await cleanupTempFile(filePath)
   }
 }
