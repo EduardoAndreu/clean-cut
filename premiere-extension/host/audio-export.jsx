@@ -251,16 +251,6 @@ function exportSequenceAudio(outputFolder, selectedTracksJson, selectedRange) {
           // sequence.getInPoint() returns seconds, not ticks!
           timeOffsetSeconds = inPointSeconds
 
-          // Add debugging info to the response
-          debugInfo.rawInPoint = rawInPoint
-          debugInfo.inPointSeconds = inPointSeconds
-          debugInfo.sequenceTimebase = sequence.timebase
-          debugInfo.calculatedOffset = timeOffsetSeconds
-          debugInfo.inPointCalculation = 'InPoint already in seconds: ' + inPointSeconds
-
-          logMessage('Raw in point value: "' + rawInPoint + '"')
-          logMessage('In point seconds: ' + inPointSeconds)
-          logMessage('Sequence timebase: ' + sequence.timebase)
           logMessage('In/Out point time offset: ' + timeOffsetSeconds + ' seconds')
           debugInfo.timeOffsetSeconds = timeOffsetSeconds
         } catch (offsetError) {
