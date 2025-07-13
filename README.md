@@ -1,184 +1,88 @@
 # Clean-Cut
 
-An intelligent audio editing tool that automatically detects and removes silence from Adobe Premiere Pro timelines using advanced Voice Activity Detection (VAD) technology.
-
-Clean-Cut combines the power of Silero VAD with Premiere Pro's timeline editing capabilities to streamline your audio editing workflow.
-
-## Features
-
-- 🎤 **Advanced VAD Technology**: Uses Silero VAD for accurate speech vs silence detection
-- ⚡ **Real-time Processing**: Live feedback during audio analysis and cutting
-- 🎯 **Intelligent Thresholds**: AI-powered silence detection with manual fine-tuning
-- 📊 **Flexible Range Selection**: Process entire sequences, in/out points, or selected clips
-- 🔄 **Seamless Integration**: Direct integration with Premiere Pro timeline
-- 🌓 **Modern UI**: Clean, responsive interface with dark/light mode support
+Intelligent audio editing automation for Adobe Premiere Pro with silence detection, cutting, and other audio processing features.
 
 ## Prerequisites
 
-- **macOS** (Windows support not tested)
-- **Node.js** (v16 or higher)
-- **Python** (3.8 or higher)
-- **Adobe Premiere Pro** (2022 or later recommended)
+- **Node.js** v22+
+- **Python** 3.12+
+- **Adobe Premiere Pro** 2025 (2022+ may work)
 
 ## Installation
 
-### 1. Clone the Repository
+### 1. Clone and Install
 
 ```bash
 git clone https://github.com/yourusername/clean-cut.git
 cd clean-cut
-```
-
-### 2. Install Node.js Dependencies
-
-```bash
 npm install
 ```
 
-### 3. Set Up Python Backend
-
-Navigate to the Python backend directory and set up a virtual environment:
+### 2. Python Setup
 
 ```bash
 cd python-backend
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cd ..
 ```
 
-### 4. Set Up Premiere Pro Extension
+### 3. Premiere Pro Extension Setup
 
-The Premiere Pro extension needs to be linked to Adobe's CEP extensions directory.
-
-**Create the symlink** (replace the source path with your actual project path):
+**macOS:**
 
 ```bash
-# Create the Adobe CEP extensions directory if it doesn't exist
 sudo mkdir -p "/Library/Application Support/Adobe/CEP/extensions"
-
-# Create a symlink to the premiere-extension folder
 sudo ln -s "/path/to/your/clean-cut/premiere-extension" "/Library/Application Support/Adobe/CEP/extensions/com.cleancut.panel"
 ```
 
-**Example** (replace with your actual path):
+**Windows:** (untested)
 
-```bash
-sudo ln -s "/Users/yourname/Documents/clean-cut/premiere-extension" "/Library/Application Support/Adobe/CEP/extensions/com.cleancut.panel"
+```cmd
+mkdir "C:\Program Files (x86)\Common Files\Adobe\CEP\extensions"
+mklink /D "C:\Program Files (x86)\Common Files\Adobe\CEP\extensions\com.cleancut.panel" "C:\path\to\your\clean-cut\premiere-extension"
 ```
 
-### 5. Enable CEP Debugging (Required)
+### 4. Enable CEP Debugging
 
-Premiere Pro extensions require debugging to be enabled:
+**macOS:**
 
 ```bash
-# Enable CEP debugging
 defaults write com.adobe.CSXS.11 PlayerDebugMode 1
 ```
 
-**Note**: The version number (11) might vary depending on your Premiere Pro version. Try different versions if needed:
+**Windows:** (untested)
 
-- Premiere Pro 2024: `com.adobe.CSXS.12`
-- Premiere Pro 2023: `com.adobe.CSXS.11`
-- Premiere Pro 2022: `com.adobe.CSXS.10`
+```cmd
+reg add "HKCU\Software\Adobe\CSXS.11" /v PlayerDebugMode /t REG_DWORD /d 1
+```
 
 ## Usage
 
-### 1. Start the Application
+1. Start the app: `npm run dev`
+2. Open Premiere Pro with an active sequence
+3. Go to **Window > Extensions > Clean-Cut**
+4. Configure settings and process audio
+
+## Build
 
 ```bash
-npm run dev
+npm run build:mac    # macOS
+npm run build:win    # Windows (untested)
+npm run build:linux  # Linux (untested)
 ```
-
-This will start the Electron app in development mode.
-
-### 2. Launch Premiere Pro
-
-Open Adobe Premiere Pro and create or open a project with an active sequence.
-
-### 3. Open the Clean-Cut Panel
-
-In Premiere Pro, go to:
-**Window > Extensions > Clean-Cut**
-
-### 4. Connect and Process
-
-1. The Clean-Cut extension panel should automatically connect to the main app
-2. In the main app, click "Remove Silences" to access the processing interface
-3. Configure your settings:
-   - **Silence Threshold**: dB level for silence detection
-   - **Minimum Silence Length**: Shortest silence to detect (ms)
-   - **Padding**: Buffer around cuts (ms)
-   - **Audio Tracks**: Select which tracks to process
-   - **Range**: Choose entire sequence, in/out points, or selected clips
-4. Click "Analyze Audio" to get VAD-based threshold recommendations
-5. Click "Remove Silences" to process the timeline
-
-## Building for Distribution
-
-### Development Build
-
-```bash
-npm run dev
-```
-
-### Production Build
-
-```bash
-# For macOS
-npm run build:mac
-
-# For Linux (untested)
-npm run build:linux
-```
-
-**Note**: Windows builds are not tested as the developer doesn't have access to a Windows machine.
-
-## Architecture
-
-Clean-Cut uses a three-tier architecture:
-
-- **Electron App**: Main application with React UI and WebSocket server
-- **Python Backend**: Silero VAD-based audio analysis engine
-- **Premiere Pro Extension**: CEP extension for timeline integration
-
-Communication flows through WebSocket connections and IPC for seamless integration.
 
 ## Troubleshooting
 
-### Extension Not Appearing
-
-- Verify the symlink was created correctly
-- Check that CEP debugging is enabled
-- Restart Premiere Pro after making changes
-- Check Console for error messages
-
-### Connection Issues
-
-- Ensure the main app is running before opening the extension
-- Check that WebSocket port (default: 8085) is not blocked
-- Verify Python virtual environment is activated
-
-### Audio Processing Errors
-
-- Ensure audio tracks are present in the sequence
-- Check that Python dependencies are installed correctly
-- Verify the sequence has audio content to analyze
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
+- **Extension not visible**: Verify symlink/link and restart Premiere Pro
+- **Connection issues**: Ensure app is running (port 8085)
+- **Processing errors**: Check Python virtual environment is activated
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- **Silero VAD**: For providing the excellent voice activity detection model
-- **Adobe**: For the CEP (Common Extensibility Platform) framework
-- **Electron**: For enabling cross-platform desktop applications
+MIT License - see [LICENSE](LICENSE) file.
 
 ---
 
-**Note**: This application is developed and tested on macOS. Windows compatibility is not guaranteed as the developer doesn't have access to a Windows machine for testing.
+**Note**: Developed and tested on macOS with Premiere Pro 2025. Windows/Linux compatibility not guaranteed.
