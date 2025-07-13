@@ -2,7 +2,7 @@
 
 Intelligent audio editing automation for Adobe Premiere Pro with silence detection, cutting, and other audio processing features. More tools in the pipeline.
 
-![Clean-Cut Interface](images/main-interface.png)
+![Clean-Cut Interface](resources/screenshot.png)
 
 ## Prerequisites
 
