@@ -18,6 +18,10 @@ const cleanCutAPI = {
     options?: {
       selectedAudioTracks?: number[]
       selectedRange?: 'entire' | 'inout' | 'selected'
+    },
+    exportMetadata?: {
+      timeOffsetSeconds?: number
+      selectedRange?: string
     }
   ) =>
     ipcRenderer.invoke('process-silences', {
@@ -25,7 +29,8 @@ const cleanCutAPI = {
       silenceThreshold,
       minSilenceLen,
       padding,
-      options
+      options,
+      exportMetadata
     }),
   analyzeAudio: (filePath: string) => ipcRenderer.invoke('analyze-audio', filePath),
   requestSequenceInfo: () => ipcRenderer.invoke('request-sequence-info'),

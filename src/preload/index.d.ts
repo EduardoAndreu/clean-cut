@@ -26,6 +26,7 @@ declare global {
       }) => Promise<{
         success: boolean
         outputPath?: string
+        timeOffsetSeconds?: number
         error?: string
       }>
       processSilences: (
@@ -36,6 +37,10 @@ declare global {
         options?: {
           selectedAudioTracks?: number[]
           selectedRange?: 'entire' | 'inout' | 'selected'
+        },
+        exportMetadata?: {
+          timeOffsetSeconds?: number
+          selectedRange?: string
         }
       ) => Promise<{
         success: boolean

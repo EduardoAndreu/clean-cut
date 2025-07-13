@@ -261,6 +261,11 @@ Found and muted ${muteResult.mutedSegments || 'multiple'} silence segments in th
           {
             selectedAudioTracks,
             selectedRange
+          },
+          // Pass export metadata with time offset for accurate cut positioning
+          {
+            timeOffsetSeconds: exportResult.timeOffsetSeconds || 0,
+            selectedRange: selectedRange
           }
         )
 

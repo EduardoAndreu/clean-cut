@@ -44,6 +44,8 @@ interface SilenceSession {
   timestamp: number
   segments: SilenceSegment[]
   processingParams: CleanCutArgs
+  timeOffsetSeconds?: number // Store the time offset for management operations
+  selectedRange?: string // Store the selected range type
   sequenceInfo?: any
 }
 
@@ -70,7 +72,12 @@ function safelyNotifyRenderer(channel: string, data: any) {
 }
 
 // Helper function to create silence session
-function createSilenceSession(silenceRanges: number[][], params: CleanCutArgs): SilenceSession {
+function createSilenceSession(
+  silenceRanges: number[][],
+  params: CleanCutArgs,
+  timeOffsetSeconds?: number,
+  selectedRange?: string
+): SilenceSession {
   const sessionId = `silence_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
   const segments: SilenceSegment[] = silenceRanges.map((range, index) => ({
@@ -89,6 +96,8 @@ function createSilenceSession(silenceRanges: number[][], params: CleanCutArgs): 
     timestamp: Date.now(),
     segments,
     processingParams: params,
+    timeOffsetSeconds: timeOffsetSeconds || 0,
+    selectedRange: selectedRange || 'entire',
     sequenceInfo: null
   }
 
@@ -417,12 +426,17 @@ app.whenReady().then(() => {
           selectedAudioTracks?: number[]
           selectedRange?: 'entire' | 'inout' | 'selected'
         }
+        exportMetadata?: {
+          timeOffsetSeconds?: number
+          selectedRange?: string
+        }
       }
     ) => {
-      const { filePath, silenceThreshold, minSilenceLen, padding, options } = params
+      const { filePath, silenceThreshold, minSilenceLen, padding, options, exportMetadata } = params
 
       try {
         console.log('🔄 Processing silences')
+        console.log('🔍 DEBUG: Export metadata received:', exportMetadata)
 
         // Process the audio file using the existing function
         const silenceRanges = await processAudioFile(filePath, {
@@ -432,13 +446,20 @@ app.whenReady().then(() => {
           options
         })
 
+        console.log('🔍 DEBUG: Raw silence ranges from Python:', silenceRanges)
+
         // Create silence session to store the data
-        const silenceSession = createSilenceSession(silenceRanges, {
-          threshold: silenceThreshold,
-          minSilenceLen,
-          padding,
-          options
-        })
+        const silenceSession = createSilenceSession(
+          silenceRanges,
+          {
+            threshold: silenceThreshold,
+            minSilenceLen,
+            padding,
+            options
+          },
+          exportMetadata?.timeOffsetSeconds,
+          exportMetadata?.selectedRange
+        )
 
         // Store the session
         currentSilenceSession = silenceSession
@@ -446,11 +467,27 @@ app.whenReady().then(() => {
 
         console.log(`📝 Created silence session: ${silenceSession.segments.length} segments`)
 
-        // Convert to cut format expected by Premiere
+        // Get the time offset from export metadata (defaults to 0 for 'entire' timeline)
+        const timeOffsetSeconds = exportMetadata?.timeOffsetSeconds || 0
+
+        console.log(`🔍 DEBUG: Applying time offset: ${timeOffsetSeconds}s`)
+
+        if (timeOffsetSeconds > 0) {
+          console.log(
+            `📍 Applying time offset: ${timeOffsetSeconds}s for ${exportMetadata?.selectedRange || 'unknown'} range`
+          )
+        }
+
+        // Convert to cut format expected by Premiere, applying offset
         const cutCommands = silenceRanges.map((range: number[]) => ({
-          start: range[0],
-          end: range[1]
+          start: range[0] + timeOffsetSeconds,
+          end: range[1] + timeOffsetSeconds
         }))
+
+        console.log('🔍 DEBUG: Cut commands being sent to Premiere:')
+        cutCommands.forEach((cmd, index) => {
+          console.log(`  Cut ${index + 1}: ${cmd.start}s to ${cmd.end}s`)
+        })
 
         // Send cut commands to Premiere
         if (premiereSocket) {
@@ -535,8 +572,8 @@ app.whenReady().then(() => {
 
       // Send delete request to Premiere Pro
       const deleteCommands = segmentsToDelete.map((segment) => ({
-        start: segment.start,
-        end: segment.end,
+        start: segment.start + (session.timeOffsetSeconds || 0),
+        end: segment.end + (session.timeOffsetSeconds || 0),
         id: segment.id
       }))
 
@@ -549,6 +586,9 @@ app.whenReady().then(() => {
       )
 
       console.log(`🗑️ Sent ${deleteCommands.length} delete requests to Premiere Pro`)
+      console.log(
+        `🔍 DEBUG: Applied time offset: ${session.timeOffsetSeconds || 0}s for delete operations`
+      )
 
       // Mark segments as deleted
       markSegmentsAsDeleted(
@@ -597,8 +637,8 @@ app.whenReady().then(() => {
 
       // Send remove with gaps request to Premiere Pro
       const removeCommands = segmentsToRemove.map((segment) => ({
-        start: segment.start,
-        end: segment.end,
+        start: segment.start + (session.timeOffsetSeconds || 0),
+        end: segment.end + (session.timeOffsetSeconds || 0),
         id: segment.id
       }))
 
@@ -611,6 +651,9 @@ app.whenReady().then(() => {
       )
 
       console.log(`🕳️ Sent ${removeCommands.length} remove with gaps requests to Premiere Pro`)
+      console.log(
+        `🔍 DEBUG: Applied time offset: ${session.timeOffsetSeconds || 0}s for remove with gaps operations`
+      )
 
       // Mark segments as processed (removed)
       markSegmentsAsDeleted(
@@ -657,8 +700,8 @@ app.whenReady().then(() => {
 
     // Send mute request to Premiere Pro
     const muteCommands = segmentsToMute.map((segment) => ({
-      start: segment.start,
-      end: segment.end,
+      start: segment.start + (session.timeOffsetSeconds || 0),
+      end: segment.end + (session.timeOffsetSeconds || 0),
       id: segment.id
     }))
 
@@ -671,6 +714,9 @@ app.whenReady().then(() => {
     )
 
     console.log(`🔇 Sent ${muteCommands.length} mute requests to Premiere Pro`)
+    console.log(
+      `🔍 DEBUG: Applied time offset: ${session.timeOffsetSeconds || 0}s for mute operations`
+    )
 
     // Mark segments as processed (muted)
     markSegmentsAsDeleted(
@@ -742,12 +788,14 @@ app.whenReady().then(() => {
           case 'audio_export_response':
             // Handle audio export result and resolve pending export request
             console.log('✅ Audio export completed')
+            console.log('🔍 DEBUG: Raw export response from Premiere:', parsedMessage.payload)
 
             // Try to parse the payload if it's a string
             let exportResult = parsedMessage.payload
             if (typeof exportResult === 'string') {
               try {
                 exportResult = JSON.parse(exportResult)
+                console.log('🔍 DEBUG: Parsed export result:', exportResult)
               } catch (e) {
                 console.error('❌ Failed to parse audio export response:', e)
               }
@@ -761,6 +809,7 @@ app.whenReady().then(() => {
               const requestId = pendingRequestIds[0] // Take the first pending request
               const resolver = pendingExportRequests.get(requestId)
               if (resolver) {
+                console.log('🔍 DEBUG: Resolving export request with:', exportResult)
                 resolver(exportResult)
               }
             } else {

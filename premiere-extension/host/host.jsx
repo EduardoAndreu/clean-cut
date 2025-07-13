@@ -30,7 +30,7 @@ if (!Object.keys) {
  */
 function logMessage(message) {
   try {
-    $.writeln('[Clean-Cut] ' + message)
+    $.writeln('[Clean-Cut] ' + message);
   } catch (e) {
     // Silent fail if console logging isn't available
   }

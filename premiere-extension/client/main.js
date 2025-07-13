@@ -199,6 +199,12 @@ function connect() {
           case 'request_cuts':
             addLogEntry(`✂️ Performing cuts`, 'info')
 
+            // Add debugging: Log the raw message payload
+            addLogEntry(`🔍 DEBUG: Received ${message.payload.length} cut ranges`, 'info')
+            message.payload.forEach((range, index) => {
+              addLogEntry(`🔍 DEBUG: Range ${index + 1}: ${range.start}s to ${range.end}s`, 'info')
+            })
+
             // Process cuts one by one using the simpler cutAtTime function
             const silenceRanges = message.payload
             const totalRanges = silenceRanges.length
@@ -214,6 +220,15 @@ function connect() {
 
             // Sort cut times chronologically
             cutTimes.sort((a, b) => a.time - b.time)
+
+            // Add debugging: Log the sorted cut times
+            addLogEntry(`🔍 DEBUG: Will perform ${cutTimes.length} individual cuts:`, 'info')
+            cutTimes.slice(0, 10).forEach((cut, index) => {
+              addLogEntry(`🔍 DEBUG: Cut ${index + 1}: ${cut.time}s (${cut.type})`, 'info')
+            })
+            if (cutTimes.length > 10) {
+              addLogEntry(`🔍 DEBUG: ... and ${cutTimes.length - 10} more cuts`, 'info')
+            }
 
             let currentCutIndex = 0
 
@@ -313,15 +328,30 @@ function connect() {
             const selectedTracksJson = JSON.stringify(selectedTracks)
 
             addLogEntry(`🎵 Exporting audio: ${selectedTracks.length} tracks`, 'info')
+            addLogEntry(`🔍 DEBUG: Export range: ${selectedRange}`, 'info')
+            addLogEntry(`🔍 DEBUG: Export folder: ${exportFolder}`, 'info')
 
             // Call ExtendScript function to export sequence audio with specific parameters
             const scriptCall = `exportSequenceAudio('${exportFolder}', '${selectedTracksJson}', '${selectedRange}')`
 
             cs.evalScript(scriptCall, function (result) {
+              // Add debugging: Log the raw result from ExtendScript
+              addLogEntry(`🔍 DEBUG: Export result (raw): ${result}`, 'info')
+
               try {
                 const resultData = JSON.parse(result)
                 if (resultData.success) {
                   addLogEntry(`✅ Audio exported successfully`, 'success')
+
+                  // Add debugging: Log the timeOffsetSeconds if present
+                  if (resultData.timeOffsetSeconds !== undefined) {
+                    addLogEntry(
+                      `🔍 DEBUG: Time offset calculated: ${resultData.timeOffsetSeconds}s`,
+                      'info'
+                    )
+                  } else {
+                    addLogEntry(`🔍 DEBUG: No timeOffsetSeconds in export result`, 'warning')
+                  }
                 } else {
                   addLogEntry(`❌ Export failed: ${resultData.error}`, 'error')
                 }
@@ -329,6 +359,7 @@ function connect() {
                 // Handle non-JSON response (might be just the file path)
                 if (result && result.length > 0) {
                   addLogEntry(`✅ Audio exported successfully`, 'success')
+                  addLogEntry(`🔍 DEBUG: Non-JSON result, no offset info available`, 'warning')
                 } else {
                   addLogEntry('✅ Export completed', 'success')
                 }

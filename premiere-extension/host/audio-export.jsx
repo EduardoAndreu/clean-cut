@@ -237,10 +237,37 @@ function exportSequenceAudio(outputFolder, selectedTracksJson, selectedRange) {
       var originalInPoint = null
       var originalOutPoint = null
       var tempInOutSet = false
+      var timeOffsetSeconds = 0 // Track the time offset for cut commands
 
       if (rangeType === 'inout') {
         workAreaType = 1 // In/Out points
         logMessage('Using In/Out points for export')
+
+        // Calculate time offset for in/out points
+        try {
+          var rawInPoint = sequence.getInPoint()
+          var inPointSeconds = parseFloat(rawInPoint) || 0
+
+          // sequence.getInPoint() returns seconds, not ticks!
+          timeOffsetSeconds = inPointSeconds
+
+          // Add debugging info to the response
+          debugInfo.rawInPoint = rawInPoint
+          debugInfo.inPointSeconds = inPointSeconds
+          debugInfo.sequenceTimebase = sequence.timebase
+          debugInfo.calculatedOffset = timeOffsetSeconds
+          debugInfo.inPointCalculation = 'InPoint already in seconds: ' + inPointSeconds
+
+          logMessage('Raw in point value: "' + rawInPoint + '"')
+          logMessage('In point seconds: ' + inPointSeconds)
+          logMessage('Sequence timebase: ' + sequence.timebase)
+          logMessage('In/Out point time offset: ' + timeOffsetSeconds + ' seconds')
+          debugInfo.timeOffsetSeconds = timeOffsetSeconds
+        } catch (offsetError) {
+          logMessage('Error calculating in/out offset: ' + offsetError.toString())
+          debugInfo.offsetError = offsetError.toString()
+          timeOffsetSeconds = 0
+        }
       } else if (rangeType === 'selected') {
         // For selected clips, we need to get their time range and set temporary in/out points
         logMessage('Getting selected clips range...')
@@ -262,6 +289,10 @@ function exportSequenceAudio(outputFolder, selectedTracksJson, selectedRange) {
                 ' seconds'
             )
 
+            // Set time offset to the start of selected clips
+            timeOffsetSeconds = selectedClipsRange.startTime
+            logMessage('Selected clips time offset: ' + timeOffsetSeconds + ' seconds')
+
             // Convert to ticks (254016000000 ticks per second)
             var ticksPerSecond = 254016000000
             var startTicks = Math.round(selectedClipsRange.startTime * ticksPerSecond)
@@ -278,18 +309,22 @@ function exportSequenceAudio(outputFolder, selectedTracksJson, selectedRange) {
             debugInfo.selectedClipsStart = selectedClipsRange.startTime
             debugInfo.selectedClipsEnd = selectedClipsRange.endTime
             debugInfo.tempInOutSet = true
+            debugInfo.timeOffsetSeconds = timeOffsetSeconds
           } else {
             logMessage('No valid selected clips found, falling back to entire timeline')
             workAreaType = 0 // Fallback to entire sequence
+            timeOffsetSeconds = 0
             debugInfo.selectedClipsError = selectedClipsRange.error
           }
         } catch (selectedError) {
           logMessage('Error handling selected clips: ' + selectedError.toString())
           workAreaType = 0 // Fallback to entire sequence
+          timeOffsetSeconds = 0
           debugInfo.selectedClipsError = selectedError.toString()
         }
       } else {
         workAreaType = 0 // Entire sequence
+        timeOffsetSeconds = 0 // No offset for entire timeline
         logMessage('Using entire timeline for export')
       }
 
@@ -388,6 +423,7 @@ function exportSequenceAudio(outputFolder, selectedTracksJson, selectedRange) {
       presetUsed: audioPresetPath,
       message: exportMessage,
       selectedTracks: selectedTracks,
+      timeOffsetSeconds: timeOffsetSeconds,
       debug: debugInfo
     })
   } catch (error) {
