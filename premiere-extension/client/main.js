@@ -688,9 +688,15 @@ function connect() {
 
         setTimeout(connect, delay)
       } else {
-        console.log('Max reconnection attempts reached')
-        updateStatus('Connection failed - Max attempts reached', 'disconnected')
-        addLogEntry('Max reconnection attempts reached', 'error')
+        console.log('Max reconnection attempts reached, will retry in 60s')
+        updateStatus('Connection failed - Retrying in 60s...', 'connecting')
+        addLogEntry('Max attempts reached, will retry in 60s', 'warning')
+
+        // Reset attempts and try again after a longer delay
+        setTimeout(() => {
+          reconnectAttempts = 0
+          connect()
+        }, 60000) // 60 seconds
       }
     }
 
@@ -709,6 +715,16 @@ function connect() {
     if (reconnectAttempts < maxReconnectAttempts) {
       reconnectAttempts++
       setTimeout(connect, 5000)
+    } else {
+      console.log('Max reconnection attempts reached in catch block, will retry in 60s')
+      updateStatus('Connection failed - Retrying in 60s...', 'connecting')
+      addLogEntry('Max attempts reached in catch block, will retry in 60s', 'warning')
+
+      // Reset attempts and try again after a longer delay
+      setTimeout(() => {
+        reconnectAttempts = 0
+        connect()
+      }, 60000) // 60 seconds
     }
   }
 }
@@ -728,9 +744,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Initialize port display
   updatePortDisplay('---')
-
-  // Initialize audio track checkboxes
-  populateAudioTrackCheckboxes(null)
 
   // Start connection
   connect()
