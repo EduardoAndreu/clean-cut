@@ -87,4 +87,4 @@ MIT License - see [LICENSE](LICENSE) file.
 
 ---
 
-**Note**: Developed and tested on macOS with Premiere Pro 2025. Windows/Linux compatibility not guaranteed.
+**Note**: Developed and tested on macOS with Premiere Pro 2025. Windows compatibility not tested.
