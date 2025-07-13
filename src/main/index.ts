@@ -3,7 +3,7 @@ import { join } from 'path'
 import { spawn } from 'child_process'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { WebSocketServer, WebSocket } from 'ws'
-import icon from '../../resources/icon.png?asset'
+import icon from '../../build/icon.png?asset'
 import { PYTHON_BACKEND_PATHS, WEBSOCKET_CONFIG } from '../shared/config'
 import {
   createTempDirectoryPath,

@@ -2,6 +2,8 @@ appId: com.electron.app
 productName: clean-cut
 directories:
   buildResources: build
+# Add explicit icon configuration for macOS
+icon: build/icon.icns
 files:
   - '!**/.vscode/*'
   - '!src/*'
@@ -13,12 +15,14 @@ asarUnpack:
   - resources/**
 win:
   executableName: clean-cut
+  icon: build/icon.ico # Explicitly specify Windows icon
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  icon: build/icon.icns # Explicitly specify macOS icon
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
