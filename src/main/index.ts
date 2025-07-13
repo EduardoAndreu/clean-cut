@@ -189,6 +189,7 @@ function createWindow(): void {
     maxHeight: 900,
     show: false,
     autoHideMenuBar: true,
+    title: 'Clean-Cut',
     icon: icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
