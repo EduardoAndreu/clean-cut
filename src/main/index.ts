@@ -716,7 +716,7 @@ app.whenReady().then(() => {
           case 'handshake':
             // Handle initial handshake from Premiere Pro extension
             console.log('🤝 Handshake received from Premiere Pro')
-            console.log('')
+
             // Send handshake acknowledgment back
             if (premiereSocket) {
               try {
@@ -859,9 +859,7 @@ app.whenReady().then(() => {
   wss.on('error', (error) => {
     console.error('❌ WebSocket server error:', error)
   })
-
   console.log(`🚀 WebSocket server started on port ${WEBSOCKET_CONFIG.PORT}`)
-  console.log('')
 
   createWindow()
 

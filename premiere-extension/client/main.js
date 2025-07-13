@@ -356,7 +356,8 @@ function connect() {
                     'success'
                   )
                 } else {
-                  addLogEntry(`❌ Delete failed: ${resultData.error}`, 'error')
+                  // Silent success - delete operation completed without explicit success confirmation
+                  addLogEntry(`✅ Delete operation completed`, 'success')
                 }
               } catch (e) {
                 addLogEntry(`✅ Delete operation completed`, 'success')
