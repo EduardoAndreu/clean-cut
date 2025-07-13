@@ -388,6 +388,36 @@ function RemoveSilences({ premiereConnected }: RemoveSilencesProps): React.JSX.E
                 <ConnectionPrompt action="view audio tracks" size="sm" className="mb-6" />
               ) : (
                 <div className="flex flex-col gap-1">
+                  {/* Select All / Deselect All Controls */}
+                  <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-7 px-2"
+                      onClick={() => {
+                        const allTracks = Array.from(
+                          { length: sequenceInfo?.audioTracks || 0 },
+                          (_, i) => i + 1
+                        )
+                        setSelectedAudioTracks(allTracks)
+                      }}
+                      disabled={selectedAudioTracks.length === (sequenceInfo?.audioTracks || 0)}
+                    >
+                      Select All
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-7 px-2"
+                      onClick={() => setSelectedAudioTracks([])}
+                      disabled={selectedAudioTracks.length === 0}
+                    >
+                      Deselect All
+                    </Button>
+                    <div className="ml-auto text-xs text-muted-foreground">
+                      {selectedAudioTracks.length} of {sequenceInfo?.audioTracks || 0} selected
+                    </div>
+                  </div>
                   {Array.from({ length: sequenceInfo?.audioTracks || 0 }, (_, i) => {
                     const trackNumber = i + 1
                     const isSelected = selectedAudioTracks.includes(trackNumber)
