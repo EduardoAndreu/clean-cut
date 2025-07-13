@@ -364,12 +364,21 @@ var EMBEDDED_PRESET_XML =
  * Creates a temporary preset file from the embedded XML data
  * @returns {string} Path to temporary preset file or null if failed
  */
-function createTempPresetFromEmbedded() {
+function createTempPresetFromEmbedded(outputFolder) {
   try {
     // Generate unique temporary filename
     var timestamp = new Date().getTime()
     var tempFileName = 'clean_cut_preset_' + timestamp + '.epr'
-    var tempFilePath = Folder.temp.fsName + '/' + tempFileName
+
+    // Use provided output folder or fallback to system temp
+    var tempFilePath
+    if (outputFolder && outputFolder.length > 0) {
+      // Use the same directory as audio exports for consistency
+      tempFilePath = outputFolder + '/' + tempFileName
+    } else {
+      // Fallback to system temp directory for backward compatibility
+      tempFilePath = Folder.temp.fsName + '/' + tempFileName
+    }
 
     // Write the XML content to temporary file
     var tempFile = new File(tempFilePath)
@@ -389,12 +398,13 @@ function createTempPresetFromEmbedded() {
 
 /**
  * Gets the path to the preset file using embedded data
+ * @param {string} outputFolder - Optional output folder to use for preset file
  * @returns {object} Object with path and debug info
  */
-function getPresetFilePath() {
+function getPresetFilePath(outputFolder) {
   try {
     // Use embedded preset data instead of external file
-    var tempPresetPath = createTempPresetFromEmbedded()
+    var tempPresetPath = createTempPresetFromEmbedded(outputFolder)
 
     return {
       path: tempPresetPath,
@@ -402,6 +412,7 @@ function getPresetFilePath() {
         method: 'embedded',
         fileName: $.fileName,
         tempPresetPath: tempPresetPath,
+        outputFolder: outputFolder || 'system temp',
         success: tempPresetPath !== null
       }
     }
@@ -411,7 +422,8 @@ function getPresetFilePath() {
       debug: {
         error: e.toString(),
         fileName: $.fileName,
-        method: 'embedded'
+        method: 'embedded',
+        outputFolder: outputFolder || 'system temp'
       }
     }
   }

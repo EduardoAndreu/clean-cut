@@ -3,9 +3,6 @@
  * This file can be imported by both main and renderer processes
  */
 
-// Export location for audio files when processing with Premiere Pro
-export const EXPORT_LOCATION = '/Users/ea/Downloads'
-
 // Python backend paths (relative to main process)
 export const PYTHON_BACKEND_PATHS = {
   VAD_CUTTER: '../../python-backend/vad_cutter.py',

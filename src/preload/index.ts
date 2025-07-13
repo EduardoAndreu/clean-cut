@@ -6,13 +6,10 @@ const api = {}
 
 // Clean Cut API for audio processing
 const cleanCutAPI = {
-  exportAudio: (
-    exportFolder: string,
-    options: {
-      selectedAudioTracks: number[]
-      selectedRange: 'entire' | 'inout' | 'selected'
-    }
-  ) => ipcRenderer.invoke('export-audio', { exportFolder, options }),
+  exportAudio: (options: {
+    selectedAudioTracks: number[]
+    selectedRange: 'entire' | 'inout' | 'selected'
+  }) => ipcRenderer.invoke('export-audio', options),
   processSilences: (
     filePath: string,
     silenceThreshold: number,

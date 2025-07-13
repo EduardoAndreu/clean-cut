@@ -1,13 +1,10 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 
 interface CleanCutAPI {
-  exportAudio: (
-    exportFolder: string,
-    options: {
-      selectedAudioTracks: number[]
-      selectedRange: 'entire' | 'inout' | 'selected'
-    }
-  ) => Promise<{ success: boolean; message: string; outputPath?: string; error?: string }>
+  exportAudio: (options: {
+    selectedAudioTracks: number[]
+    selectedRange: 'entire' | 'inout' | 'selected'
+  }) => Promise<{ success: boolean; message: string; outputPath?: string; error?: string }>
   processSilences: (
     filePath: string,
     silenceThreshold: number,
@@ -23,13 +20,10 @@ declare global {
     electron: ElectronAPI
     api: {}
     cleanCutAPI: {
-      exportAudio: (
-        exportFolder: string,
-        options: {
-          selectedAudioTracks: number[]
-          selectedRange: 'entire' | 'inout' | 'selected'
-        }
-      ) => Promise<{
+      exportAudio: (options: {
+        selectedAudioTracks: number[]
+        selectedRange: 'entire' | 'inout' | 'selected'
+      }) => Promise<{
         success: boolean
         outputPath?: string
         error?: string

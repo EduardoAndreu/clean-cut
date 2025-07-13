@@ -3,9 +3,10 @@
 
 /**
  * Exports the active sequence's audio as a WAV file
+ * @param {string} outputFolder - Optional output folder (defaults to system temp for backward compatibility)
  * @returns {string} JSON string containing the file path or error message
  */
-function exportActiveSequenceAudio() {
+function exportActiveSequenceAudio(outputFolder) {
   try {
     // Check if there's an active project and sequence
     if (!app.project || !app.project.activeSequence) {
@@ -18,9 +19,20 @@ function exportActiveSequenceAudio() {
     var activeSequence = app.project.activeSequence
     var timestamp = new Date().getTime()
     var fileName = 'cleancut_audio_' + timestamp + '.wav'
-    var tempFolder = Folder.temp
-    var outputFile = new File(tempFolder.fsName + '/' + fileName)
-    var exportPath = outputFile.fsName
+
+    // Use provided output folder or fallback to system temp for backward compatibility
+    var exportPath
+    if (outputFolder && outputFolder.length > 0) {
+      var lastChar = outputFolder.charAt(outputFolder.length - 1)
+      if (lastChar !== '/' && lastChar !== '\\') {
+        outputFolder += '/'
+      }
+      exportPath = outputFolder + fileName
+    } else {
+      // Fallback to system temp directory for backward compatibility
+      var tempFolder = Folder.temp
+      exportPath = tempFolder.fsName + '/' + fileName
+    }
 
     var success = activeSequence.exportAsMediaDirect(
       exportPath,
@@ -31,12 +43,14 @@ function exportActiveSequenceAudio() {
     return JSON.stringify({
       success: success,
       filePath: success ? exportPath : null,
-      error: success ? null : 'Failed to export audio'
+      error: success ? null : 'Failed to export audio',
+      outputFolder: outputFolder || 'system temp'
     })
   } catch (error) {
     return JSON.stringify({
       success: false,
-      error: 'Export error: ' + error.toString()
+      error: 'Export error: ' + error.toString(),
+      outputFolder: outputFolder || 'system temp'
     })
   }
 }
@@ -99,27 +113,26 @@ function exportSequenceAudio(outputFolder, selectedTracksJson, selectedRange) {
     var sequenceName = sequence.name.replace(/[^a-zA-Z0-9]/g, '_')
     var filename = sequenceName + '_audio_' + timestamp + '.wav'
 
-    var outputPath
-    if (outputFolder && outputFolder.length > 0) {
-      outputPath = outputFolder
-      var lastChar = outputPath.charAt(outputPath.length - 1)
-      if (lastChar !== '/' && lastChar !== '\\') {
-        outputPath += '/'
-      }
-      outputPath += filename
-    } else {
-      try {
-        var tempDir = Folder.temp.fsName
-        outputPath = tempDir + '/' + filename
-      } catch (e) {
-        outputPath = '~/Desktop/' + filename
-      }
+    // Output folder is now required - no fallback to system temp
+    if (!outputFolder || outputFolder.length === 0) {
+      return JSON.stringify({
+        success: false,
+        error: 'Output folder is required - no fallback to system temp directory',
+        debug: debugInfo
+      })
     }
+
+    var outputPath = outputFolder
+    var lastChar = outputPath.charAt(outputPath.length - 1)
+    if (lastChar !== '/' && lastChar !== '\\') {
+      outputPath += '/'
+    }
+    outputPath += filename
 
     debugInfo.outputPath = outputPath
 
-    // Get preset file
-    var presetResult = getPresetFilePath()
+    // Get preset file - use the same output folder for consistency
+    var presetResult = getPresetFilePath(outputFolder)
     if (!presetResult.path) {
       return JSON.stringify({
         success: false,
@@ -129,6 +142,7 @@ function exportSequenceAudio(outputFolder, selectedTracksJson, selectedRange) {
     }
     var audioPresetPath = presetResult.path
     debugInfo.presetPath = audioPresetPath
+    debugInfo.presetDebug = presetResult.debug
 
     // Enable QE DOM for better track control
     app.enableQE()

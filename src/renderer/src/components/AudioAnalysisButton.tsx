@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Button } from './ui/button'
 import { Loader2 } from 'lucide-react'
-import { EXPORT_LOCATION } from '../../../shared/config'
 
 interface AudioAnalysisResult {
   suggestions: {
@@ -47,8 +46,8 @@ function AudioAnalysisButton({
     onStatusUpdate('Exporting audio for analysis...')
 
     try {
-      // First, export audio from Premiere Pro
-      const result = await window.cleanCutAPI.exportAudio(EXPORT_LOCATION, {
+      // Export audio from Premiere Pro to temporary location (path generated internally)
+      const result = await window.cleanCutAPI.exportAudio({
         selectedAudioTracks,
         selectedRange
       })

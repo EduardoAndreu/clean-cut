@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { Button } from './ui/button'
-import { EXPORT_LOCATION } from '../../../shared/config'
 
 interface SequenceInfo {
   success: boolean
@@ -244,8 +243,8 @@ Found and muted ${muteResult.mutedSegments || 'multiple'} silence segments in th
     onStatusUpdate('Exporting audio from Premiere Pro...')
 
     try {
-      // Step 1: Export audio from Premiere Pro
-      const exportResult = await window.cleanCutAPI.exportAudio(EXPORT_LOCATION, {
+      // Step 1: Export audio from Premiere Pro to temporary location (path generated internally)
+      const exportResult = await window.cleanCutAPI.exportAudio({
         selectedAudioTracks,
         selectedRange
       })

@@ -5,6 +5,15 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { WebSocketServer, WebSocket } from 'ws'
 import icon from '../../resources/icon.png?asset'
 import { PYTHON_BACKEND_PATHS, WEBSOCKET_CONFIG } from '../shared/config'
+import {
+  createTempDirectoryPath,
+  ensureTempDirectory,
+  trackExportedFilesInDirectory,
+  cleanupTempDirectory,
+  cleanupTempDirectoryContaining,
+  cleanupAllTempFiles,
+  scanAndTrackPresetFiles
+} from './temp-file-utils'
 
 // Interface for clean cut arguments
 interface CleanCutArgs {
@@ -262,68 +271,85 @@ app.whenReady().then(() => {
     'export-audio',
     async (
       _,
-      params: {
-        exportFolder: string
-        options: {
-          selectedAudioTracks: number[]
-          selectedRange: 'entire' | 'inout' | 'selected'
-        }
+      options: {
+        selectedAudioTracks: number[]
+        selectedRange: 'entire' | 'inout' | 'selected'
       }
     ) => {
       if (!premiereSocket) {
         throw new Error('Premiere Pro is not connected.')
       }
 
-      const { exportFolder, options } = params
+      // Generate temporary directory path for export
+      const tempExportDir = createTempDirectoryPath()
 
-      // Create a unique request ID for this export
-      const requestId = `export_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      try {
+        // Ensure the temporary directory exists
+        await ensureTempDirectory(tempExportDir)
 
-      // Create a Promise that will be resolved when the WebSocket response arrives
-      return new Promise((resolve, reject) => {
-        // Store the resolver function
-        pendingExportRequests.set(requestId, resolve)
+        // Create a unique request ID for this export
+        const requestId = `export_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
-        // Set a timeout to prevent hanging forever
-        const timeout = setTimeout(() => {
-          pendingExportRequests.delete(requestId)
-          reject(new Error('Audio export timeout - no response from Premiere Pro after 30 seconds'))
-        }, 30000)
+        // Create a Promise that will be resolved when the WebSocket response arrives
+        const result = await new Promise((resolve, reject) => {
+          // Store the resolver function
+          pendingExportRequests.set(requestId, resolve)
 
-        // Store the timeout with the request so we can clear it
-        const originalResolve = resolve
-        pendingExportRequests.set(requestId, (result: any) => {
-          clearTimeout(timeout)
-          pendingExportRequests.delete(requestId)
-          originalResolve(result)
+          // Set a timeout to prevent hanging forever
+          const timeout = setTimeout(() => {
+            pendingExportRequests.delete(requestId)
+            reject(
+              new Error('Audio export timeout - no response from Premiere Pro after 30 seconds')
+            )
+          }, 30000)
+
+          // Store the timeout with the request so we can clear it
+          const originalResolve = resolve
+          pendingExportRequests.set(requestId, (result: any) => {
+            clearTimeout(timeout)
+            pendingExportRequests.delete(requestId)
+            originalResolve(result)
+          })
+
+          // Send export request to Premiere Pro
+          if (!premiereSocket) {
+            clearTimeout(timeout)
+            pendingExportRequests.delete(requestId)
+            reject(new Error('Premiere Pro connection lost during export request'))
+            return
+          }
+
+          premiereSocket.send(
+            JSON.stringify({
+              type: 'request_audio_export',
+              payload: {
+                exportFolder: tempExportDir,
+                selectedTracks: options.selectedAudioTracks,
+                selectedRange: options.selectedRange,
+                requestId // Include request ID so we can match the response
+              }
+            })
+          )
+          console.log(
+            'Sent request_audio_export to Premiere Pro with temp directory:',
+            tempExportDir,
+            'requestId:',
+            requestId
+          )
         })
 
-        // Send export request to Premiere Pro
-        if (!premiereSocket) {
-          clearTimeout(timeout)
-          pendingExportRequests.delete(requestId)
-          reject(new Error('Premiere Pro connection lost during export request'))
-          return
-        }
+        // After successful export, track any files created in the directory
+        await trackExportedFilesInDirectory(tempExportDir)
 
-        premiereSocket.send(
-          JSON.stringify({
-            type: 'request_audio_export',
-            payload: {
-              exportFolder,
-              selectedTracks: options.selectedAudioTracks,
-              selectedRange: options.selectedRange,
-              requestId // Include request ID so we can match the response
-            }
-          })
-        )
-        console.log(
-          'Sent request_audio_export to Premiere Pro with params:',
-          params,
-          'requestId:',
-          requestId
-        )
-      })
+        // Also scan for and track any preset files that might have been created
+        await scanAndTrackPresetFiles()
+
+        return result
+      } catch (error) {
+        // Clean up the directory if export failed
+        await cleanupTempDirectory(tempExportDir)
+        throw error
+      }
     }
   )
 
@@ -337,7 +363,7 @@ app.whenReady().then(() => {
       console.log('Script path:', scriptPath)
       console.log('File path:', filePath)
 
-      return new Promise((resolve, reject) => {
+      const result = await new Promise((resolve, reject) => {
         const pythonProcess = spawn(pythonPath, [scriptPath, filePath])
 
         let stdout = ''
@@ -386,10 +412,15 @@ app.whenReady().then(() => {
           reject(new Error(`Failed to start audio analysis process: ${error.message}`))
         })
       })
+
+      return result
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       console.error('Audio analysis error:', errorMessage)
       return { success: false, error: errorMessage }
+    } finally {
+      // Clean up the temporary directory containing the exported file
+      await cleanupTempDirectoryContaining(filePath)
     }
   })
 
@@ -468,6 +499,9 @@ app.whenReady().then(() => {
         const errorMessage = error instanceof Error ? error.message : String(error)
         console.error('Silence processing error:', errorMessage)
         return { success: false, error: errorMessage }
+      } finally {
+        // Clean up the temporary directory containing the exported file
+        await cleanupTempDirectoryContaining(filePath)
       }
     }
   )
@@ -860,6 +894,9 @@ app.whenReady().then(() => {
 
   createWindow()
 
+  // Scan for any existing preset files on startup
+  scanAndTrackPresetFiles().catch(console.error)
+
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
@@ -874,6 +911,11 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+// Clean up temporary files when the app is about to quit
+app.on('before-quit', async () => {
+  await cleanupAllTempFiles()
 })
 
 // In this file you can include the rest of your app's specific main process
