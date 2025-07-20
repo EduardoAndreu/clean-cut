@@ -15,7 +15,7 @@ Intelligent audio editing automation for Adobe Premiere Pro with silence detecti
 ### 1. Clone and Install
 
 ```bash
-git clone https://github.com/yourusername/clean-cut.git
+git clone "link to repo"
 cd clean-cut
 npm install
 ```
