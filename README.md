@@ -60,6 +60,12 @@ defaults write com.adobe.CSXS.11 PlayerDebugMode 1
 reg add "HKCU\Software\Adobe\CSXS.11" /v PlayerDebugMode /t REG_DWORD /d 1
 ```
 
+### Video Installation Guide
+
+For a detailed walkthrough of the installation process, check out my [installation guide video](https://youtu.be/EgkqhE5Rv_4).
+
+[![Clean-Cut Installation Guide](https://img.youtube.com/vi/EgkqhE5Rv_4/maxresdefault.jpg)](https://youtu.be/EgkqhE5Rv_4 'Clean-Cut Installation Guide')
+
 ## Usage
 
 1. Start the app: `npm run dev`
