@@ -6,6 +6,7 @@ import { Input } from './ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
 import { Alert, AlertDescription } from './ui/alert'
 import { Progress } from './ui/progress'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import FrameDecimationButton from './FrameDecimationButton'
 
 interface VideoStats {
@@ -24,8 +25,29 @@ const FrameDecimation: React.FC = () => {
   const [isEncoding, setIsEncoding] = useState(false)
   const [progress, setProgress] = useState(0)
   const [results, setResults] = useState<VideoStats | null>(null)
-  const [timeElapsed, setTimeElapsed] = useState(0)
-  const [totalDuration, setTotalDuration] = useState(0)
+  const [startTime, setStartTime] = useState<number | null>(null)
+  const [elapsedTime, setElapsedTime] = useState(0)
+
+  // Timer for elapsed time
+  useEffect(() => {
+    if (startTime && isProcessing) {
+      const interval = setInterval(() => {
+        setElapsedTime(Math.floor((Date.now() - startTime) / 1000))
+      }, 100) // Update every 100ms for smooth counter
+
+      return () => clearInterval(interval)
+    }
+    return undefined
+  }, [startTime, isProcessing])
+
+  // Get filename from path and truncate if needed
+  const getDisplayFilename = (path: string) => {
+    const filename = path.split('/').pop() || path
+    if (filename.length > 25) {
+      return filename.substring(0, 25) + '...'
+    }
+    return filename
+  }
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -45,7 +67,7 @@ const FrameDecimation: React.FC = () => {
     setIsDragging(false)
 
     const files = Array.from(e.dataTransfer.files)
-    
+
     const videoFile = files.find((file) => {
       const ext = file.name.toLowerCase().split('.').pop()
       return ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', 'm4v'].includes(ext || '')
@@ -128,8 +150,6 @@ const FrameDecimation: React.FC = () => {
       // Once we receive progress, we're no longer encoding
       setIsEncoding(false)
       setProgress(data.percentage ?? (data.current / data.total) * 100)
-      if (data.timeElapsed !== undefined) setTimeElapsed(data.timeElapsed)
-      if (data.duration !== undefined) setTotalDuration(data.duration)
     }
 
     window.electron.ipcRenderer.on('frame-decimation-progress', handleProgress)
@@ -145,6 +165,7 @@ const FrameDecimation: React.FC = () => {
     setIsProcessing(true)
     setIsEncoding(true) // Start in encoding state
     setError('') // Clear any previous errors
+    setStartTime(Date.now()) // Start the timer
 
     try {
       const result = await window.cleanCutAPI.processFrameDecimation(inputPath, outputPath)
@@ -154,15 +175,15 @@ const FrameDecimation: React.FC = () => {
         setIsProcessing(false)
         setIsEncoding(false)
         setProgress(0)
-        setTimeElapsed(0)
-        setTotalDuration(0)
+        setStartTime(null)
+        setElapsedTime(0)
       } else {
         setError(result.error || 'Failed to process video')
         setIsProcessing(false)
         setIsEncoding(false)
         setProgress(0)
-        setTimeElapsed(0)
-        setTotalDuration(0)
+        setStartTime(null)
+        setElapsedTime(0)
       }
     } catch (error) {
       console.error('Frame decimation error:', error)
@@ -170,8 +191,8 @@ const FrameDecimation: React.FC = () => {
       setIsProcessing(false)
       setIsEncoding(false)
       setProgress(0)
-      setTimeElapsed(0)
-      setTotalDuration(0)
+      setStartTime(null)
+      setElapsedTime(0)
     }
   }
 
@@ -187,9 +208,9 @@ const FrameDecimation: React.FC = () => {
   }
 
   const estimateTimeRemaining = () => {
-    if (progress > 0 && timeElapsed > 0) {
-      const totalTime = (timeElapsed / progress) * 100
-      const remaining = totalTime - timeElapsed
+    if (progress > 0 && elapsedTime > 0) {
+      const totalTime = (elapsedTime / progress) * 100
+      const remaining = totalTime - elapsedTime
       return formatTime(remaining)
     }
     return 'Calculating...'
@@ -212,6 +233,24 @@ const FrameDecimation: React.FC = () => {
             <CardDescription>
               Reduce frame rate by dropping similar consecutive frames using FFmpeg's mpdecimate
               filter
+              {/* Important Notes Accordion */}
+              <Accordion type="single" collapsible className="w-full">
+                <AccordionItem value="important-notes">
+                  <AccordionTrigger className="text-sm">Important Notes</AccordionTrigger>
+                  <AccordionContent>
+                    <ul className="list-disc list-inside space-y-2 text-xs text-gray-500 dark:text-gray-400">
+                      <li>
+                        This will take a while to process, depending on your computer specs and the
+                        length of your video.
+                      </li>
+                      <li>
+                        The percentage of completion is an estimate based on the number of frames of
+                        the original video
+                      </li>
+                    </ul>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -280,32 +319,25 @@ const FrameDecimation: React.FC = () => {
                 {isProcessing && (
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
-                      <span>{isEncoding ? 'Encoding video...' : 'Processing video...'}</span>
+                      <span>
+                        {isEncoding
+                          ? `Encoding ${getDisplayFilename(inputPath)}`
+                          : `Processing ${getDisplayFilename(inputPath)}`}
+                      </span>
                       <span>{isEncoding ? '' : `${Math.round(progress)}%`}</span>
                     </div>
                     <Progress value={isEncoding ? 0 : progress} className="mb-2" />
-                    {!isEncoding && (
-                      <div className="grid grid-cols-2 gap-4 text-xs text-gray-500 dark:text-gray-500">
-                        <div>
-                          <span className="font-medium">Time elapsed:</span> {formatTime(timeElapsed)}
-                        </div>
-                        <div className="text-right">
-                          <span className="font-medium">Time remaining:</span> {estimateTimeRemaining()}
-                        </div>
-                        {totalDuration > 0 && (
-                          <>
-                            <div>
-                              <span className="font-medium">Video duration:</span>{' '}
-                              {formatTime(totalDuration)}
-                            </div>
-                            <div className="text-right">
-                              <span className="font-medium">Processing speed:</span>{' '}
-                              {timeElapsed > 0 ? `${(timeElapsed / totalDuration).toFixed(2)}x` : '...'}
-                            </div>
-                          </>
-                        )}
+                    <div className="grid grid-cols-2 gap-4 text-xs text-gray-500 dark:text-gray-500">
+                      <div>
+                        <span className="font-medium">Time elapsed:</span> {formatTime(elapsedTime)}
                       </div>
-                    )}
+                      {!isEncoding && (
+                        <div className="text-right">
+                          <span className="font-medium">Time remaining:</span>{' '}
+                          {estimateTimeRemaining()}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -337,7 +369,6 @@ const FrameDecimation: React.FC = () => {
                 </CardContent>
               </Card>
             )}
-
           </CardContent>
         </Card>
       </div>

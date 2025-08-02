@@ -6,57 +6,36 @@ import subprocess
 import sys
 import json
 import os
-import re
 from pathlib import Path
 
 
-def get_video_info(input_path):
-    """Get all video information in one ffprobe call"""
+def get_frame_count(input_path):
+    """Get video frame count"""
     try:
         cmd = [
             'ffprobe',
             '-v', 'error',
             '-select_streams', 'v:0',
             '-count_frames',
-            '-show_entries', 'stream=nb_read_frames,r_frame_rate:format=duration',
-            '-of', 'json',
+            '-show_entries', 'stream=nb_read_frames',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
             input_path
         ]
         
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        data = json.loads(result.stdout)
-        
-        frame_count = 0
-        frame_rate = 0
-        duration = 0
-        
-        if data.get('streams') and data['streams']:
-            stream = data['streams'][0]
-            frame_count = int(stream.get('nb_read_frames', 0))
-            
-            # Parse frame rate (can be in format like "30/1" or "29.97")
-            frame_rate_str = stream.get('r_frame_rate', '0/1')
-            if '/' in frame_rate_str:
-                num, den = map(int, frame_rate_str.split('/'))
-                frame_rate = num / den if den != 0 else 0
-            else:
-                frame_rate = float(frame_rate_str)
-        
-        if data.get('format'):
-            duration = float(data['format'].get('duration', 0))
-            
-        return frame_count, frame_rate, duration
+        return int(result.stdout.strip())
     except Exception as e:
-        print(f"Error getting video info: {e}", file=sys.stderr)
-        return 0, 0, 0
+        print(f"Error getting frame count: {e}", file=sys.stderr)
+        return 0
 
 
 def process_video(input_path, output_path):
     """Process video with mpdecimate filter"""
-    # Get all video info in one call
-    original_frames, frame_rate, duration = get_video_info(input_path)
+    # Get original frame count
+    original_frames = get_frame_count(input_path)
     
-    print(f"Video info: {original_frames} frames, {frame_rate} fps, {duration}s duration", file=sys.stderr)
+    if original_frames == 0:
+        raise Exception("Could not determine video frame count")
     
     # FFmpeg command with mpdecimate
     cmd = [
@@ -90,9 +69,9 @@ def process_video(input_path, output_path):
         if not line:
             continue
             
-        # Debug first few lines
+        # Skip non-progress lines
         if 'Duration:' in line or 'Stream' in line:
-            print(f"FFmpeg: {line}", file=sys.stderr)
+            continue
         
         # Parse -progress output (key=value format)
         if '=' in line and line.count('=') == 1:
@@ -108,40 +87,16 @@ def process_video(input_path, output_path):
                     if current_frame != last_reported_frame and current_frame > 0:
                         last_reported_frame = current_frame
                         
-                        # Get time if available
-                        current_time = 0
-                        if 'out_time_ms' in progress_data:
-                            time_ms = int(progress_data['out_time_ms'])
-                            current_time = time_ms / 1000000.0  # Convert to seconds
-                        elif 'out_time' in progress_data:
-                            # Parse time format HH:MM:SS.ffffff
-                            time_str = progress_data['out_time']
-                            if ':' in time_str:
-                                parts = time_str.split(':')
-                                if len(parts) == 3:
-                                    hours = int(parts[0])
-                                    minutes = int(parts[1])
-                                    seconds = float(parts[2])
-                                    current_time = hours * 3600 + minutes * 60 + seconds
-                        
-                        # Since mpdecimate drops frames, we need to estimate input progress
-                        # Use the output time to estimate how much of the input we've processed
-                        if duration > 0:
-                            input_progress = (current_time / duration) * original_frames
-                            progress_percentage = (current_time / duration) * 100
-                        else:
-                            # Fallback to frame-based calculation
-                            input_progress = current_frame
-                            progress_percentage = (current_frame / original_frames) * 100
+                        # Simple progress based on output frames
+                        # Since we can't know exact input progress with mpdecimate,
+                        # we estimate based on output frames
+                        progress_percentage = (current_frame / original_frames) * 100 if original_frames > 0 else 0
                         
                         progress_json = {
                             "type": "progress",
-                            "current": int(input_progress),
+                            "current": current_frame,
                             "total": original_frames,
-                            "percentage": min(progress_percentage, 100),
-                            "time_elapsed": current_time,
-                            "duration": duration,
-                            "output_frames": current_frame
+                            "percentage": min(progress_percentage, 100)
                         }
                         print(json.dumps(progress_json))
                         sys.stdout.flush()
@@ -159,8 +114,8 @@ def process_video(input_path, output_path):
     if return_code != 0:
         raise Exception(f"FFmpeg process failed with return code {return_code}")
     
-    # Get output video info
-    output_frames, _, _ = get_video_info(output_path)
+    # Get output frame count
+    output_frames = get_frame_count(output_path)
     
     # Calculate statistics
     reduction_percentage = ((original_frames - output_frames) / original_frames * 100) if original_frames > 0 else 0
