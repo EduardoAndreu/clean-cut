@@ -151,26 +151,38 @@ export const useFrameDecimationQueue = (): UseFrameDecimationQueueReturn => {
   )
 
   const processNextInQueue = useCallback(async (): Promise<QueueItem | null> => {
-    // Find next pending item using ref to get latest queue state
-    const nextItem = queueRef.current.find((item) => item.status === 'pending')
-    if (!nextItem) {
-      // Queue complete
+    // Always fetch fresh queue state from main process
+    try {
+      const queueResult = await window.cleanCutAPI.getFrameDecimationQueue()
+      if (!queueResult.success || !queueResult.queue) {
+        console.error('Failed to get queue from main process')
+        setIsProcessing(false)
+        setCurrentProcessingId(null)
+        return null
+      }
+
+      // Find next pending item from fresh queue state
+      const nextItem = queueResult.queue.find((item) => item.status === 'pending')
+      if (!nextItem) {
+        // Queue complete
+        setIsProcessing(false)
+        setCurrentProcessingId(null)
+        return null
+      }
+
+      // Update local state to reflect what we're about to process
+      setCurrentProcessingId(nextItem.id)
+      setIsProcessing(true)
+
+      // Return the next item to be processed by the parent component
+      return nextItem
+    } catch (error) {
+      console.error('Error getting next queue item:', error)
       setIsProcessing(false)
       setCurrentProcessingId(null)
-
-      // Queue will be cleared by main process when all items are complete
-
       return null
     }
-
-    // Update queue to mark item as processing
-    updateQueueItemStatus(nextItem.id, 'processing')
-    setCurrentProcessingId(nextItem.id)
-    setIsProcessing(true)
-
-    // Return the next item to be processed by the parent component
-    return nextItem
-  }, [updateQueueItemStatus])
+  }, [])
 
   const clearQueue = useCallback(() => {
     setQueue([])

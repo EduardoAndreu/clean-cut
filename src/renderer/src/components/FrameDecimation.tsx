@@ -67,9 +67,7 @@ const FrameDecimation: React.FC = () => {
               setIsProcessing(false)
 
               // Process next item if available
-              setTimeout(() => {
-                handleProcessNext()
-              }, 500)
+              // Will be handled after component finishes mounting
             }
           }, 1000)
         }
@@ -228,6 +226,9 @@ const FrameDecimation: React.FC = () => {
       setTimeout(() => {
         handleProcessNext()
       }, 500)
+    } finally {
+      setIsProcessing(false)
+      setIsEncoding(false)
     }
   }
 

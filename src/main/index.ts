@@ -90,6 +90,7 @@ interface QueueItem {
 
 let frameDecimationQueue: QueueItem[] = []
 let currentProcessingId: string | null = null
+let isProcessingLocked = false
 
 // Queue persistence file path
 const getQueueFilePath = () => {
@@ -822,6 +823,15 @@ app.whenReady().then(() => {
 
         console.log('🎬 Starting frame decimation processing')
 
+        // Check if already processing to prevent race conditions
+        if (isProcessingLocked) {
+          console.log('⚠️ Frame decimation already in progress, skipping duplicate request')
+          return { success: false, error: 'Processing already in progress' }
+        }
+
+        // Set processing lock
+        isProcessingLocked = true
+
         // Set current processing ID in main process
         currentProcessingId = processingId || null
 
@@ -913,7 +923,10 @@ app.whenReady().then(() => {
 
                 frameDecimationState = null // Clear state on completion
                 currentProcessingId = null
+                isProcessingLocked = false // Clear processing lock
                 resolve(result)
+
+                // Don't auto-process next item - let renderer decide
               } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error)
                 console.error('❌ Failed to parse frame decimation output:', errorMessage)
@@ -928,7 +941,10 @@ app.whenReady().then(() => {
 
                 frameDecimationState = null // Clear state on error
                 currentProcessingId = null
+                isProcessingLocked = false // Clear processing lock
                 reject(new Error(`Failed to parse output: ${errorMessage}`))
+
+                // Don't auto-process next item - let renderer decide
               }
             } else {
               console.error('❌ Frame decimation failed:', stderr)
@@ -943,18 +959,27 @@ app.whenReady().then(() => {
 
               frameDecimationState = null // Clear state on error
               currentProcessingId = null
+              isProcessingLocked = false // Clear processing lock
               reject(new Error(`Frame decimation failed: ${stderr}`))
+
+              // Don't auto-process next item - let renderer decide
             }
           })
 
           pythonProcess.on('error', (error) => {
             console.error('❌ Failed to start frame decimation process:', error.message)
+            frameDecimationState = null
+            currentProcessingId = null
+            isProcessingLocked = false // Clear processing lock
             reject(new Error(`Failed to start process: ${error.message}`))
           })
         })
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
         console.error('❌ Frame decimation error:', errorMessage)
+        frameDecimationState = null
+        currentProcessingId = null
+        isProcessingLocked = false // Clear processing lock
         throw new Error(errorMessage)
       }
     }
