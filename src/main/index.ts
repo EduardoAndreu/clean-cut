@@ -1095,6 +1095,15 @@ app.whenReady().then(() => {
   })
   console.log(`🚀 WebSocket server started on port ${WEBSOCKET_CONFIG.PORT}`)
 
+  // Clear frame decimation queue in development mode
+  if (is.dev) {
+    const queuePath = getQueueFilePath()
+    fs.unlink(queuePath).catch(() => {
+      // Ignore error if file doesn't exist
+    })
+    console.log('🧹 Cleared frame decimation queue (development mode)')
+  }
+
   createWindow()
 
   // Scan for any existing preset files on startup
