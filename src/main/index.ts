@@ -60,6 +60,19 @@ const pendingExportRequests = new Map<string, (result: any) => void>()
 let currentSilenceSession: SilenceSession | null = null
 const silenceSessionHistory = new Map<string, SilenceSession>()
 
+// Store frame decimation state
+interface FrameDecimationState {
+  isProcessing: boolean
+  inputPath: string
+  outputPath: string
+  progress: number
+  current: number
+  total: number
+  startTime: number
+}
+
+let frameDecimationState: FrameDecimationState | null = null
+
 // Helper function to safely send messages to renderer
 function safelyNotifyRenderer(channel: string, data: any) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -743,6 +756,17 @@ app.whenReady().then(() => {
       const scriptPath = join(__dirname, PYTHON_BACKEND_PATHS.FRAME_DECIMATOR)
 
       console.log('🎬 Starting frame decimation processing')
+      
+      // Initialize frame decimation state
+      frameDecimationState = {
+        isProcessing: true,
+        inputPath,
+        outputPath,
+        progress: 0,
+        current: 0,
+        total: 0,
+        startTime: Date.now()
+      }
 
       return new Promise((resolve, reject) => {
         const pythonProcess = spawn(pythonPath, [scriptPath, inputPath, outputPath])
@@ -761,6 +785,14 @@ app.whenReady().then(() => {
               const parsed = JSON.parse(line)
               if (parsed.type === 'progress') {
                 console.log('📊 Progress update:', parsed)
+                
+                // Update frame decimation state
+                if (frameDecimationState) {
+                  frameDecimationState.current = parsed.current
+                  frameDecimationState.total = parsed.total
+                  frameDecimationState.progress = parsed.percentage || 0
+                }
+                
                 // Notify renderer of progress with percentage
                 safelyNotifyRenderer('frame-decimation-progress', {
                   current: parsed.current,
@@ -789,14 +821,17 @@ app.whenReady().then(() => {
               const result = JSON.parse(resultLine)
 
               console.log('✅ Frame decimation completed')
+              frameDecimationState = null // Clear state on completion
               resolve(result)
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : String(error)
               console.error('❌ Failed to parse frame decimation output:', errorMessage)
+              frameDecimationState = null // Clear state on error
               reject(new Error(`Failed to parse output: ${errorMessage}`))
             }
           } else {
             console.error('❌ Frame decimation failed:', stderr)
+            frameDecimationState = null // Clear state on error
             reject(new Error(`Frame decimation failed: ${stderr}`))
           }
         })
@@ -810,6 +845,25 @@ app.whenReady().then(() => {
       const errorMessage = error instanceof Error ? error.message : String(error)
       console.error('❌ Frame decimation error:', errorMessage)
       throw new Error(errorMessage)
+    }
+  })
+
+  // Handler to check frame decimation status
+  ipcMain.handle('get-frame-decimation-status', async () => {
+    if (!frameDecimationState) {
+      return { isProcessing: false }
+    }
+    
+    const elapsedTime = Math.floor((Date.now() - frameDecimationState.startTime) / 1000)
+    
+    return {
+      isProcessing: frameDecimationState.isProcessing,
+      inputPath: frameDecimationState.inputPath,
+      outputPath: frameDecimationState.outputPath,
+      progress: frameDecimationState.progress,
+      current: frameDecimationState.current,
+      total: frameDecimationState.total,
+      elapsedTime
     }
   })
 

@@ -28,6 +28,31 @@ const FrameDecimation: React.FC = () => {
   const [startTime, setStartTime] = useState<number | null>(null)
   const [elapsedTime, setElapsedTime] = useState(0)
 
+  // Check for ongoing processing on mount
+  useEffect(() => {
+    const checkOngoingProcessing = async () => {
+      try {
+        const status = await window.cleanCutAPI.getFrameDecimationStatus()
+        if (status.isProcessing && status.inputPath && status.outputPath) {
+          // Restore state from ongoing process
+          setInputPath(status.inputPath)
+          setOutputPath(status.outputPath)
+          setIsProcessing(true)
+          setIsEncoding(false) // If we're getting progress, we're past encoding
+          setProgress(status.progress || 0)
+          setElapsedTime(status.elapsedTime || 0)
+          setStartTime(Date.now() - (status.elapsedTime || 0) * 1000)
+          
+          console.log('Restored ongoing frame decimation process:', status)
+        }
+      } catch (error) {
+        console.error('Error checking frame decimation status:', error)
+      }
+    }
+    
+    checkOngoingProcessing()
+  }, [])
+
   // Timer for elapsed time
   useEffect(() => {
     if (startTime && isProcessing) {

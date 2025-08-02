@@ -136,6 +136,15 @@ declare global {
           reductionPercentage: number
         }
       }>
+      getFrameDecimationStatus: () => Promise<{
+        isProcessing: boolean
+        inputPath?: string
+        outputPath?: string
+        progress?: number
+        current?: number
+        total?: number
+        elapsedTime?: number
+      }>
     }
   }
 }
