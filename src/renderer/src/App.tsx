@@ -63,7 +63,23 @@ function AppContent(): React.JSX.Element {
               </div>
             }
           />
-          <Route path="/frame-decimation" element={<FrameDecimation />} />
+          <Route
+            path="/frame-decimation"
+            element={
+              <div className="min-h-full bg-background text-foreground flex flex-col py-8 px-4">
+                {/* Header with page title and return button */}
+                <div className="flex justify-between items-center mb-8 px-6">
+                  <h2 className="text-2xl font-bold text-foreground">Frame Decimation</h2>
+                  <ReturnHomeButton onReturnHome={handleBackToLanding} />
+                </div>
+
+                {/* Main content */}
+                <div className="flex-1">
+                  <FrameDecimation />
+                </div>
+              </div>
+            }
+          />
         </Routes>
       </div>
 

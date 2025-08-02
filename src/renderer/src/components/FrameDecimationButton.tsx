@@ -6,13 +6,19 @@ interface FrameDecimationButtonProps {
   isProcessing: boolean
   isEncoding?: boolean
   onClick: () => void
+  queueLength?: number
 }
 
 const FrameDecimationButton: React.FC<FrameDecimationButtonProps> = ({
   isProcessing,
   isEncoding,
-  onClick
+  onClick,
+  queueLength
 }) => {
+  const buttonText = queueLength && queueLength > 1 
+    ? `Process ${queueLength} Videos` 
+    : 'Process Video'
+    
   return (
     <Button onClick={onClick} disabled={isProcessing} className="w-full" size="lg">
       {isProcessing ? (
@@ -23,7 +29,7 @@ const FrameDecimationButton: React.FC<FrameDecimationButtonProps> = ({
       ) : (
         <>
           <Play className="mr-2 h-4 w-4" />
-          Process Video
+          {buttonText}
         </>
       )}
     </Button>
