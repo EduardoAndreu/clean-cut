@@ -41,7 +41,9 @@ const cleanCutAPI = {
     ipcRenderer.invoke('remove-silence-segments-with-gaps', sessionId, segmentIds),
   muteSilenceSegments: (sessionId?: string, segmentIds?: string[]) =>
     ipcRenderer.invoke('mute-silence-segments', sessionId, segmentIds),
-  clearSilenceSessions: () => ipcRenderer.invoke('clear-silence-sessions')
+  clearSilenceSessions: () => ipcRenderer.invoke('clear-silence-sessions'),
+  processFrameDecimation: (inputPath: string, outputPath: string) =>
+    ipcRenderer.invoke('process-frame-decimation', { inputPath, outputPath })
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

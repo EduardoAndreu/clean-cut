@@ -7,6 +7,7 @@
 export const PYTHON_BACKEND_PATHS = {
   VAD_CUTTER: '../../python-backend/vad_cutter.py',
   VAD_ANALYZER: '../../python-backend/vad_analyzer.py',
+  FRAME_DECIMATOR: '../../python-backend/frame_decimator.py',
   PYTHON_EXECUTABLE: '../../python-backend/.venv/bin/python'
 }
 

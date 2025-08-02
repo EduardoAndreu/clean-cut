@@ -123,6 +123,19 @@ declare global {
         success: boolean
         message: string
       }>
+      processFrameDecimation: (
+        inputPath: string,
+        outputPath: string
+      ) => Promise<{
+        success: boolean
+        outputPath?: string
+        error?: string
+        stats?: {
+          originalFrames: number
+          outputFrames: number
+          reductionPercentage: number
+        }
+      }>
     }
   }
 }

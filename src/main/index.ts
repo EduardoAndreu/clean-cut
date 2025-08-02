@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { spawn } from 'child_process'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -246,6 +246,17 @@ app.whenReady().then(() => {
 
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
+
+  // Dialog handlers
+  ipcMain.handle('dialog:showOpenDialog', async (_, options) => {
+    const result = await dialog.showOpenDialog(mainWindow!, options)
+    return result
+  })
+
+  ipcMain.handle('dialog:showSaveDialog', async (_, options) => {
+    const result = await dialog.showSaveDialog(mainWindow!, options)
+    return result
+  })
 
   // Handler for requesting sequence info from Premiere Pro
   ipcMain.handle('request-sequence-info', async () => {
@@ -722,6 +733,76 @@ app.whenReady().then(() => {
     return {
       success: true,
       message: 'All silence sessions cleared.'
+    }
+  })
+
+  // Handler for processing frame decimation
+  ipcMain.handle('process-frame-decimation', async (_, { inputPath, outputPath }) => {
+    try {
+      const pythonPath = join(__dirname, PYTHON_BACKEND_PATHS.PYTHON_EXECUTABLE)
+      const scriptPath = join(__dirname, PYTHON_BACKEND_PATHS.FRAME_DECIMATOR)
+
+      console.log('🎬 Starting frame decimation processing')
+
+      return new Promise((resolve, reject) => {
+        const pythonProcess = spawn(pythonPath, [scriptPath, inputPath, outputPath])
+
+        let stdout = ''
+        let stderr = ''
+
+        pythonProcess.stdout.on('data', (data) => {
+          const output = data.toString()
+          stdout += output
+
+          // Try to parse each line as JSON for progress updates
+          const lines = output.split('\n').filter((line) => line.trim())
+          for (const line of lines) {
+            try {
+              const parsed = JSON.parse(line)
+              if (parsed.type === 'progress') {
+                // Notify renderer of progress
+                safelyNotifyRenderer('frame-decimation-progress', parsed)
+              }
+            } catch {
+              // Not JSON, ignore
+            }
+          }
+        })
+
+        pythonProcess.stderr.on('data', (data) => {
+          stderr += data.toString()
+        })
+
+        pythonProcess.on('close', (code) => {
+          if (code === 0) {
+            try {
+              // Find the final result JSON
+              const lines = stdout.split('\n').filter((line) => line.trim())
+              const resultLine = lines[lines.length - 1]
+              const result = JSON.parse(resultLine)
+
+              console.log('✅ Frame decimation completed')
+              resolve(result)
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error)
+              console.error('❌ Failed to parse frame decimation output:', errorMessage)
+              reject(new Error(`Failed to parse output: ${errorMessage}`))
+            }
+          } else {
+            console.error('❌ Frame decimation failed:', stderr)
+            reject(new Error(`Frame decimation failed: ${stderr}`))
+          }
+        })
+
+        pythonProcess.on('error', (error) => {
+          console.error('❌ Failed to start frame decimation process:', error.message)
+          reject(new Error(`Failed to start process: ${error.message}`))
+        })
+      })
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error('❌ Frame decimation error:', errorMessage)
+      throw new Error(errorMessage)
     }
   })
 
