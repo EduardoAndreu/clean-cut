@@ -760,8 +760,15 @@ app.whenReady().then(() => {
             try {
               const parsed = JSON.parse(line)
               if (parsed.type === 'progress') {
-                // Notify renderer of progress
-                safelyNotifyRenderer('frame-decimation-progress', parsed)
+                console.log('📊 Progress update:', parsed)
+                // Notify renderer of progress with percentage
+                safelyNotifyRenderer('frame-decimation-progress', {
+                  current: parsed.current,
+                  total: parsed.total,
+                  percentage: parsed.percentage || 0,
+                  timeElapsed: parsed.time_elapsed,
+                  duration: parsed.duration
+                })
               }
             } catch {
               // Not JSON, ignore

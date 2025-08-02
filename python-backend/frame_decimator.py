@@ -44,10 +44,32 @@ def get_video_info(input_path):
         return 0, 0
 
 
+def get_video_duration(input_path):
+    """Get video duration in seconds using ffprobe"""
+    try:
+        cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            input_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        duration = float(result.stdout.strip())
+        return duration
+    except Exception as e:
+        print(f"Error getting video duration: {e}", file=sys.stderr)
+        return 0
+
+
 def process_video(input_path, output_path):
     """Process video with mpdecimate filter"""
     # Get original video info
     original_frames, frame_rate = get_video_info(input_path)
+    duration = get_video_duration(input_path)
+    
+    print(f"Video info: {original_frames} frames, {frame_rate} fps, {duration}s duration", file=sys.stderr)
     
     # FFmpeg command with mpdecimate
     cmd = [
@@ -56,39 +78,141 @@ def process_video(input_path, output_path):
         '-vf', 'mpdecimate,setpts=N/FRAME_RATE/TB',
         '-an',  # Remove audio
         '-y',   # Overwrite output file if exists
+        '-progress', 'pipe:2',  # Send progress to stderr
         output_path
     ]
     
-    # Progress tracking regex
-    progress_regex = re.compile(r'frame=\s*(\d+)')
+    # Progress tracking regex patterns
+    # For -progress output
+    progress_frame_regex = re.compile(r'^frame=(\d+)')
+    progress_fps_regex = re.compile(r'^fps=([\d.]+)')
+    progress_time_regex = re.compile(r'^out_time_ms=(\d+)')
+    # For regular stderr output
+    stderr_regex = re.compile(r'frame=\s*(\d+).*fps=\s*([\d.]+).*time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})')
     
     # Run FFmpeg with progress tracking
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stderr=subprocess.PIPE,
         universal_newlines=True
     )
     
-    last_frame = 0
-    for line in process.stdout:
-        # Output line for debugging
-        print(line.strip(), file=sys.stderr)
+    last_progress_time = 0
+    current_frame = 0
+    current_time = 0
+    
+    # Collect progress data
+    progress_data = {}
+    last_reported_frame = -1
+    
+    # Read stderr for progress
+    for line in process.stderr:
+        line = line.strip()
         
-        # Extract frame number for progress
-        match = progress_regex.search(line)
-        if match:
-            current_frame = int(match.group(1))
-            if current_frame > last_frame:
-                last_frame = current_frame
-                # Send progress update
-                progress_data = {
-                    "type": "progress",
-                    "current": current_frame,
-                    "total": original_frames
-                }
-                print(json.dumps(progress_data))
-                sys.stdout.flush()
+        if not line:
+            continue
+            
+        # Debug first few lines
+        if 'Duration:' in line or 'Stream' in line:
+            print(f"FFmpeg: {line}", file=sys.stderr)
+        
+        # Parse -progress output (key=value format)
+        if '=' in line and line.count('=') == 1:
+            key, value = line.split('=', 1)
+            progress_data[key] = value
+            
+            # When we get 'progress=continue' or 'progress=end', we have a complete update
+            if key == 'progress' and 'frame' in progress_data:
+                try:
+                    current_frame = int(progress_data.get('frame', 0))
+                    
+                    # Only send update if frame count changed
+                    if current_frame != last_reported_frame and current_frame > 0:
+                        last_reported_frame = current_frame
+                        
+                        # Get time if available
+                        current_time = 0
+                        if 'out_time_ms' in progress_data:
+                            time_ms = int(progress_data['out_time_ms'])
+                            current_time = time_ms / 1000000.0  # Convert to seconds
+                        elif 'out_time' in progress_data:
+                            # Parse time format HH:MM:SS.ffffff
+                            time_str = progress_data['out_time']
+                            if ':' in time_str:
+                                parts = time_str.split(':')
+                                if len(parts) == 3:
+                                    hours = int(parts[0])
+                                    minutes = int(parts[1])
+                                    seconds = float(parts[2])
+                                    current_time = hours * 3600 + minutes * 60 + seconds
+                        
+                        # Since mpdecimate drops frames, we need to estimate input progress
+                        # Use the output time to estimate how much of the input we've processed
+                        if duration > 0:
+                            input_progress = (current_time / duration) * original_frames
+                            progress_percentage = (current_time / duration) * 100
+                        else:
+                            # Fallback to frame-based calculation
+                            input_progress = current_frame
+                            progress_percentage = (current_frame / original_frames) * 100
+                        
+                        progress_json = {
+                            "type": "progress",
+                            "current": int(input_progress),
+                            "total": original_frames,
+                            "percentage": min(progress_percentage, 100),
+                            "time_elapsed": current_time,
+                            "duration": duration,
+                            "output_frames": current_frame
+                        }
+                        print(json.dumps(progress_json))
+                        sys.stdout.flush()
+                        
+                        # Clear progress_data for next update
+                        progress_data = {}
+                        
+                except (ValueError, KeyError) as e:
+                    print(f"Error parsing progress: {e}", file=sys.stderr)
+        else:
+            # Try to parse regular stderr format
+            stderr_match = stderr_regex.search(line)
+            if stderr_match:
+                try:
+                    frame_num = int(stderr_match.group(1))
+                    fps = float(stderr_match.group(2))
+                    hours = int(stderr_match.group(3))
+                    minutes = int(stderr_match.group(4))
+                    seconds = int(stderr_match.group(5))
+                    centiseconds = int(stderr_match.group(6))
+                    
+                    current_time = hours * 3600 + minutes * 60 + seconds + centiseconds / 100
+                    
+                    # For regular output, we see the frame number being written to output
+                    # But we want to track input progress, so estimate based on time
+                    if duration > 0 and frame_rate > 0:
+                        estimated_input_frame = int(current_time * frame_rate)
+                        progress_percentage = (estimated_input_frame / original_frames) * 100
+                        
+                        # Send updates periodically
+                        current_time_int = int(current_time)
+                        if current_time_int > last_progress_time:
+                            last_progress_time = current_time_int
+                            
+                            progress_json = {
+                                "type": "progress",
+                                "current": estimated_input_frame,
+                                "total": original_frames,
+                                "percentage": min(progress_percentage, 100),
+                                "time_elapsed": current_time,
+                                "duration": duration,
+                                "output_frames": frame_num,
+                                "fps": fps
+                            }
+                            print(json.dumps(progress_json))
+                            sys.stdout.flush()
+                except ValueError:
+                    pass
     
     # Wait for process to complete
     return_code = process.wait()

@@ -12,7 +12,13 @@ interface FrameDecimationButtonProps {
     reductionPercentage: number
   }) => void
   onError: (error: string) => void
-  onProgress?: (current: number, total: number) => void
+  onProgress?: (
+    current: number,
+    total: number,
+    percentage?: number,
+    timeElapsed?: number,
+    duration?: number
+  ) => void
 }
 
 const FrameDecimationButton: React.FC<FrameDecimationButtonProps> = ({
@@ -27,9 +33,20 @@ const FrameDecimationButton: React.FC<FrameDecimationButtonProps> = ({
 
   useEffect(() => {
     // Listen for progress updates from main process
-    const handleProgress = (_event: any, data: { current: number; total: number }) => {
+    const handleProgress = (
+      _event: any,
+      data: {
+        current: number
+        total: number
+        percentage?: number
+        timeElapsed?: number
+        duration?: number
+      }
+    ) => {
       if (onProgress) {
-        onProgress(data.current, data.total)
+        // If we have percentage, use it directly, otherwise calculate from frames
+        const progress = data.percentage ?? (data.current / data.total) * 100
+        onProgress(data.current, data.total, progress, data.timeElapsed, data.duration)
       }
     }
 
@@ -51,17 +68,23 @@ const FrameDecimationButton: React.FC<FrameDecimationButtonProps> = ({
       const result = await window.cleanCutAPI.processFrameDecimation(inputPath, outputPath)
 
       if (result.success && result.stats) {
+        // Processing is actually complete - the backend has finished
         onComplete(result.stats)
+        setIsProcessing(false)
+        onProcessing(false)
       } else {
         onError(result.error || 'Failed to process video')
+        setIsProcessing(false)
+        onProcessing(false)
       }
     } catch (error) {
       console.error('Frame decimation error:', error)
       onError(error instanceof Error ? error.message : 'An unexpected error occurred')
-    } finally {
+      // Only set processing to false on error
       setIsProcessing(false)
       onProcessing(false)
     }
+    // Don't use finally - the parent component will set processing to false when complete
   }
 
   return (

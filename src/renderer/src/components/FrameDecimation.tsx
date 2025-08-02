@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import { ArrowLeft, Upload, FolderOpen, Film } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from './ui/button'
@@ -23,6 +23,16 @@ const FrameDecimation: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false)
   const [progress, setProgress] = useState(0)
   const [results, setResults] = useState<VideoStats | null>(null)
+  const [timeElapsed, setTimeElapsed] = useState(0)
+  const [totalDuration, setTotalDuration] = useState(0)
+
+  // Debug: Track isProcessing state changes
+  useEffect(() => {
+    console.log('🔍 FrameDecimation isProcessing changed:', isProcessing)
+  }, [isProcessing])
+
+  // Debug: Track renders
+  console.log('🔄 FrameDecimation render:', { isProcessing, progress, timeElapsed, totalDuration })
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -42,7 +52,6 @@ const FrameDecimation: React.FC = () => {
     setIsDragging(false)
 
     const files = Array.from(e.dataTransfer.files)
-    console.log('Dropped files:', files)
     
     const videoFile = files.find((file) => {
       const ext = file.name.toLowerCase().split('.').pop()
@@ -50,10 +59,6 @@ const FrameDecimation: React.FC = () => {
     })
 
     if (videoFile) {
-      console.log('Video file:', videoFile)
-      console.log('File properties:', Object.keys(videoFile))
-      console.log('File path:', (videoFile as any).path)
-      
       // In Electron, we can get the path from the File object's path property
       const filePath = (videoFile as any).path
       if (filePath) {
@@ -83,7 +88,10 @@ const FrameDecimation: React.FC = () => {
       const result = await window.electron.ipcRenderer.invoke('dialog:showOpenDialog', {
         properties: ['openFile'],
         filters: [
-          { name: 'Video Files', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', 'm4v'] },
+          {
+            name: 'Video Files',
+            extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', 'm4v']
+          },
           { name: 'All Files', extensions: ['*'] }
         ]
       })
@@ -113,19 +121,54 @@ const FrameDecimation: React.FC = () => {
   }
 
   const handleProcessComplete = (stats: VideoStats) => {
+    console.log('✅ FrameDecimation: Process complete')
     setResults(stats)
     setIsProcessing(false)
     setProgress(0)
+    setTimeElapsed(0)
+    setTotalDuration(0)
   }
 
   const handleProcessError = (errorMessage: string) => {
+    console.log('❌ FrameDecimation: Process error:', errorMessage)
     setError(errorMessage)
     setIsProcessing(false)
     setProgress(0)
+    setTimeElapsed(0)
+    setTotalDuration(0)
   }
 
-  const handleProgressUpdate = (current: number, total: number) => {
-    setProgress((current / total) * 100)
+  const handleProgressUpdate = (
+    current: number,
+    total: number,
+    percentage?: number,
+    elapsed?: number,
+    duration?: number
+  ) => {
+    console.log('FrameDecimation handleProgressUpdate:', { current, total, percentage, elapsed, duration, isProcessing })
+    setProgress(percentage ?? (current / total) * 100)
+    if (elapsed !== undefined) setTimeElapsed(elapsed)
+    if (duration !== undefined) setTotalDuration(duration)
+  }
+
+  const formatTime = (seconds: number) => {
+    const hrs = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    const secs = Math.floor(seconds % 60)
+
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const estimateTimeRemaining = () => {
+    if (progress > 0 && timeElapsed > 0) {
+      const totalTime = (timeElapsed / progress) * 100
+      const remaining = totalTime - timeElapsed
+      return formatTime(remaining)
+    }
+    return 'Calculating...'
   }
 
   return (
@@ -200,14 +243,48 @@ const FrameDecimation: React.FC = () => {
               </Alert>
             )}
 
-            {/* Progress Bar */}
-            {isProcessing && (
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
-                  <span>Processing video...</span>
-                  <span>{Math.round(progress)}%</span>
-                </div>
-                <Progress value={progress} />
+            {/* Process Button */}
+            {inputPath && outputPath && (
+              <div className="space-y-4">
+                <FrameDecimationButton
+                  inputPath={inputPath}
+                  outputPath={outputPath}
+                  onProcessing={setIsProcessing}
+                  onComplete={handleProcessComplete}
+                  onError={handleProcessError}
+                  onProgress={handleProgressUpdate}
+                />
+
+                {/* Progress Bar - Show below button when processing */}
+                {isProcessing && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                      <span>Processing video...</span>
+                      <span>{Math.round(progress)}%</span>
+                    </div>
+                    <Progress value={progress} className="mb-2" />
+                    <div className="grid grid-cols-2 gap-4 text-xs text-gray-500 dark:text-gray-500">
+                      <div>
+                        <span className="font-medium">Time elapsed:</span> {formatTime(timeElapsed)}
+                      </div>
+                      <div className="text-right">
+                        <span className="font-medium">Time remaining:</span> {estimateTimeRemaining()}
+                      </div>
+                      {totalDuration > 0 && (
+                        <>
+                          <div>
+                            <span className="font-medium">Video duration:</span>{' '}
+                            {formatTime(totalDuration)}
+                          </div>
+                          <div className="text-right">
+                            <span className="font-medium">Processing speed:</span>{' '}
+                            {timeElapsed > 0 ? `${(timeElapsed / totalDuration).toFixed(2)}x` : '...'}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -238,17 +315,6 @@ const FrameDecimation: React.FC = () => {
               </Card>
             )}
 
-            {/* Process Button */}
-            {inputPath && outputPath && !isProcessing && (
-              <FrameDecimationButton
-                inputPath={inputPath}
-                outputPath={outputPath}
-                onProcessing={setIsProcessing}
-                onComplete={handleProcessComplete}
-                onError={handleProcessError}
-                onProgress={handleProgressUpdate}
-              />
-            )}
           </CardContent>
         </Card>
       </div>
