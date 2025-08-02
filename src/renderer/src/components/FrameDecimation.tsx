@@ -26,14 +26,6 @@ const FrameDecimation: React.FC = () => {
   const [timeElapsed, setTimeElapsed] = useState(0)
   const [totalDuration, setTotalDuration] = useState(0)
 
-  // Debug: Track isProcessing state changes
-  useEffect(() => {
-    console.log('🔍 FrameDecimation isProcessing changed:', isProcessing)
-  }, [isProcessing])
-
-  // Debug: Track renders
-  console.log('🔄 FrameDecimation render:', { isProcessing, progress, timeElapsed, totalDuration })
-
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -120,35 +112,60 @@ const FrameDecimation: React.FC = () => {
     }
   }
 
-  const handleProcessComplete = (stats: VideoStats) => {
-    console.log('✅ FrameDecimation: Process complete')
-    setResults(stats)
-    setIsProcessing(false)
-    setProgress(0)
-    setTimeElapsed(0)
-    setTotalDuration(0)
-  }
+  // Handle progress updates from IPC
+  useEffect(() => {
+    const handleProgress = (
+      _event: any,
+      data: {
+        current: number
+        total: number
+        percentage?: number
+        timeElapsed?: number
+        duration?: number
+      }
+    ) => {
+      setProgress(data.percentage ?? (data.current / data.total) * 100)
+      if (data.timeElapsed !== undefined) setTimeElapsed(data.timeElapsed)
+      if (data.duration !== undefined) setTotalDuration(data.duration)
+    }
 
-  const handleProcessError = (errorMessage: string) => {
-    console.log('❌ FrameDecimation: Process error:', errorMessage)
-    setError(errorMessage)
-    setIsProcessing(false)
-    setProgress(0)
-    setTimeElapsed(0)
-    setTotalDuration(0)
-  }
+    window.electron.ipcRenderer.on('frame-decimation-progress', handleProgress)
 
-  const handleProgressUpdate = (
-    current: number,
-    total: number,
-    percentage?: number,
-    elapsed?: number,
-    duration?: number
-  ) => {
-    console.log('FrameDecimation handleProgressUpdate:', { current, total, percentage, elapsed, duration, isProcessing })
-    setProgress(percentage ?? (current / total) * 100)
-    if (elapsed !== undefined) setTimeElapsed(elapsed)
-    if (duration !== undefined) setTotalDuration(duration)
+    return () => {
+      window.electron.ipcRenderer.removeAllListeners('frame-decimation-progress')
+    }
+  }, [])
+
+  const handleProcessVideo = async () => {
+    if (isProcessing) return
+
+    setIsProcessing(true)
+    setError('') // Clear any previous errors
+
+    try {
+      const result = await window.cleanCutAPI.processFrameDecimation(inputPath, outputPath)
+
+      if (result.success && result.stats) {
+        setResults(result.stats)
+        setIsProcessing(false)
+        setProgress(0)
+        setTimeElapsed(0)
+        setTotalDuration(0)
+      } else {
+        setError(result.error || 'Failed to process video')
+        setIsProcessing(false)
+        setProgress(0)
+        setTimeElapsed(0)
+        setTotalDuration(0)
+      }
+    } catch (error) {
+      console.error('Frame decimation error:', error)
+      setError(error instanceof Error ? error.message : 'An unexpected error occurred')
+      setIsProcessing(false)
+      setProgress(0)
+      setTimeElapsed(0)
+      setTotalDuration(0)
+    }
   }
 
   const formatTime = (seconds: number) => {
@@ -247,12 +264,8 @@ const FrameDecimation: React.FC = () => {
             {inputPath && outputPath && (
               <div className="space-y-4">
                 <FrameDecimationButton
-                  inputPath={inputPath}
-                  outputPath={outputPath}
-                  onProcessing={setIsProcessing}
-                  onComplete={handleProcessComplete}
-                  onError={handleProcessError}
-                  onProgress={handleProgressUpdate}
+                  isProcessing={isProcessing}
+                  onClick={handleProcessVideo}
                 />
 
                 {/* Progress Bar - Show below button when processing */}

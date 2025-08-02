@@ -11,14 +11,14 @@ from pathlib import Path
 
 
 def get_video_info(input_path):
-    """Get basic video information using ffprobe"""
+    """Get all video information in one ffprobe call"""
     try:
         cmd = [
             'ffprobe',
             '-v', 'error',
             '-select_streams', 'v:0',
             '-count_frames',
-            '-show_entries', 'stream=nb_read_frames,r_frame_rate',
+            '-show_entries', 'stream=nb_read_frames,r_frame_rate:format=duration',
             '-of', 'json',
             input_path
         ]
@@ -26,7 +26,11 @@ def get_video_info(input_path):
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         data = json.loads(result.stdout)
         
-        if data['streams']:
+        frame_count = 0
+        frame_rate = 0
+        duration = 0
+        
+        if data.get('streams') and data['streams']:
             stream = data['streams'][0]
             frame_count = int(stream.get('nb_read_frames', 0))
             
@@ -37,37 +41,20 @@ def get_video_info(input_path):
                 frame_rate = num / den if den != 0 else 0
             else:
                 frame_rate = float(frame_rate_str)
+        
+        if data.get('format'):
+            duration = float(data['format'].get('duration', 0))
             
-            return frame_count, frame_rate
+        return frame_count, frame_rate, duration
     except Exception as e:
         print(f"Error getting video info: {e}", file=sys.stderr)
-        return 0, 0
-
-
-def get_video_duration(input_path):
-    """Get video duration in seconds using ffprobe"""
-    try:
-        cmd = [
-            'ffprobe',
-            '-v', 'error',
-            '-show_entries', 'format=duration',
-            '-of', 'default=noprint_wrappers=1:nokey=1',
-            input_path
-        ]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        duration = float(result.stdout.strip())
-        return duration
-    except Exception as e:
-        print(f"Error getting video duration: {e}", file=sys.stderr)
-        return 0
+        return 0, 0, 0
 
 
 def process_video(input_path, output_path):
     """Process video with mpdecimate filter"""
-    # Get original video info
-    original_frames, frame_rate = get_video_info(input_path)
-    duration = get_video_duration(input_path)
+    # Get all video info in one call
+    original_frames, frame_rate, duration = get_video_info(input_path)
     
     print(f"Video info: {original_frames} frames, {frame_rate} fps, {duration}s duration", file=sys.stderr)
     
@@ -82,13 +69,7 @@ def process_video(input_path, output_path):
         output_path
     ]
     
-    # Progress tracking regex patterns
-    # For -progress output
-    progress_frame_regex = re.compile(r'^frame=(\d+)')
-    progress_fps_regex = re.compile(r'^fps=([\d.]+)')
-    progress_time_regex = re.compile(r'^out_time_ms=(\d+)')
-    # For regular stderr output
-    stderr_regex = re.compile(r'frame=\s*(\d+).*fps=\s*([\d.]+).*time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})')
+    # Progress tracking - we'll use -progress output only
     
     # Run FFmpeg with progress tracking
     process = subprocess.Popen(
@@ -97,10 +78,6 @@ def process_video(input_path, output_path):
         stderr=subprocess.PIPE,
         universal_newlines=True
     )
-    
-    last_progress_time = 0
-    current_frame = 0
-    current_time = 0
     
     # Collect progress data
     progress_data = {}
@@ -174,45 +151,7 @@ def process_video(input_path, output_path):
                         
                 except (ValueError, KeyError) as e:
                     print(f"Error parsing progress: {e}", file=sys.stderr)
-        else:
-            # Try to parse regular stderr format
-            stderr_match = stderr_regex.search(line)
-            if stderr_match:
-                try:
-                    frame_num = int(stderr_match.group(1))
-                    fps = float(stderr_match.group(2))
-                    hours = int(stderr_match.group(3))
-                    minutes = int(stderr_match.group(4))
-                    seconds = int(stderr_match.group(5))
-                    centiseconds = int(stderr_match.group(6))
-                    
-                    current_time = hours * 3600 + minutes * 60 + seconds + centiseconds / 100
-                    
-                    # For regular output, we see the frame number being written to output
-                    # But we want to track input progress, so estimate based on time
-                    if duration > 0 and frame_rate > 0:
-                        estimated_input_frame = int(current_time * frame_rate)
-                        progress_percentage = (estimated_input_frame / original_frames) * 100
-                        
-                        # Send updates periodically
-                        current_time_int = int(current_time)
-                        if current_time_int > last_progress_time:
-                            last_progress_time = current_time_int
-                            
-                            progress_json = {
-                                "type": "progress",
-                                "current": estimated_input_frame,
-                                "total": original_frames,
-                                "percentage": min(progress_percentage, 100),
-                                "time_elapsed": current_time,
-                                "duration": duration,
-                                "output_frames": frame_num,
-                                "fps": fps
-                            }
-                            print(json.dumps(progress_json))
-                            sys.stdout.flush()
-                except ValueError:
-                    pass
+        # Skip any non-progress output
     
     # Wait for process to complete
     return_code = process.wait()
@@ -221,7 +160,7 @@ def process_video(input_path, output_path):
         raise Exception(f"FFmpeg process failed with return code {return_code}")
     
     # Get output video info
-    output_frames, _ = get_video_info(output_path)
+    output_frames, _, _ = get_video_info(output_path)
     
     # Calculate statistics
     reduction_percentage = ((original_frames - output_frames) / original_frames * 100) if original_frames > 0 else 0
