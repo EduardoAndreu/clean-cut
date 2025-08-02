@@ -1,6 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { spawn } from 'child_process'
+import { promises as fs } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { WebSocketServer, WebSocket } from 'ws'
 import icon from '../../build/icon.png?asset'
@@ -69,9 +70,15 @@ interface FrameDecimationState {
   current: number
   total: number
   startTime: number
+  queue?: any[] // Store the queue items
+  currentProcessingId?: string | null
+  outputFolder?: string
 }
 
 let frameDecimationState: FrameDecimationState | null = null
+
+// Queue persistence file path
+const getQueueFilePath = () => join(app.getPath('userData'), 'frame-decimation-queue.json')
 
 // Helper function to safely send messages to renderer
 function safelyNotifyRenderer(channel: string, data: any) {
@@ -750,112 +757,118 @@ app.whenReady().then(() => {
   })
 
   // Handler for processing frame decimation
-  ipcMain.handle('process-frame-decimation', async (_, { inputPath, outputPath }) => {
-    try {
-      const pythonPath = join(__dirname, PYTHON_BACKEND_PATHS.PYTHON_EXECUTABLE)
-      const scriptPath = join(__dirname, PYTHON_BACKEND_PATHS.FRAME_DECIMATOR)
+  ipcMain.handle(
+    'process-frame-decimation',
+    async (_, { inputPath, outputPath, queue, currentProcessingId, outputFolder }) => {
+      try {
+        const pythonPath = join(__dirname, PYTHON_BACKEND_PATHS.PYTHON_EXECUTABLE)
+        const scriptPath = join(__dirname, PYTHON_BACKEND_PATHS.FRAME_DECIMATOR)
 
-      console.log('🎬 Starting frame decimation processing')
-      
-      // Initialize frame decimation state
-      frameDecimationState = {
-        isProcessing: true,
-        inputPath,
-        outputPath,
-        progress: 0,
-        current: 0,
-        total: 0,
-        startTime: Date.now()
-      }
+        console.log('🎬 Starting frame decimation processing')
 
-      return new Promise((resolve, reject) => {
-        const pythonProcess = spawn(pythonPath, [scriptPath, inputPath, outputPath])
+        // Initialize frame decimation state
+        frameDecimationState = {
+          isProcessing: true,
+          inputPath,
+          outputPath,
+          progress: 0,
+          current: 0,
+          total: 0,
+          startTime: Date.now(),
+          queue,
+          currentProcessingId,
+          outputFolder
+        }
 
-        let stdout = ''
-        let stderr = ''
+        return new Promise((resolve, reject) => {
+          const pythonProcess = spawn(pythonPath, [scriptPath, inputPath, outputPath])
 
-        pythonProcess.stdout.on('data', (data) => {
-          const output = data.toString()
-          stdout += output
+          let stdout = ''
+          let stderr = ''
 
-          // Try to parse each line as JSON for progress updates
-          const lines = output.split('\n').filter((line) => line.trim())
-          for (const line of lines) {
-            try {
-              const parsed = JSON.parse(line)
-              if (parsed.type === 'progress') {
-                console.log('📊 Progress update:', parsed)
-                
-                // Update frame decimation state
-                if (frameDecimationState) {
-                  frameDecimationState.current = parsed.current
-                  frameDecimationState.total = parsed.total
-                  frameDecimationState.progress = parsed.percentage || 0
+          pythonProcess.stdout.on('data', (data) => {
+            const output = data.toString()
+            stdout += output
+
+            // Try to parse each line as JSON for progress updates
+            const lines = output.split('\n').filter((line) => line.trim())
+            for (const line of lines) {
+              try {
+                const parsed = JSON.parse(line)
+                if (parsed.type === 'progress') {
+                  console.log('📊 Progress update:', parsed)
+
+                  // Update frame decimation state
+                  if (frameDecimationState) {
+                    frameDecimationState.current = parsed.current
+                    frameDecimationState.total = parsed.total
+                    frameDecimationState.progress = parsed.percentage || 0
+                  }
+
+                  // Notify renderer of progress with percentage
+                  safelyNotifyRenderer('frame-decimation-progress', {
+                    current: parsed.current,
+                    total: parsed.total,
+                    percentage: parsed.percentage || 0,
+                    timeElapsed: parsed.time_elapsed,
+                    duration: parsed.duration
+                  })
                 }
-                
-                // Notify renderer of progress with percentage
-                safelyNotifyRenderer('frame-decimation-progress', {
-                  current: parsed.current,
-                  total: parsed.total,
-                  percentage: parsed.percentage || 0,
-                  timeElapsed: parsed.time_elapsed,
-                  duration: parsed.duration
-                })
+              } catch {
+                // Not JSON, ignore
               }
-            } catch {
-              // Not JSON, ignore
             }
-          }
-        })
+          })
 
-        pythonProcess.stderr.on('data', (data) => {
-          stderr += data.toString()
-        })
+          pythonProcess.stderr.on('data', (data) => {
+            stderr += data.toString()
+          })
 
-        pythonProcess.on('close', (code) => {
-          if (code === 0) {
-            try {
-              // Find the final result JSON
-              const lines = stdout.split('\n').filter((line) => line.trim())
-              const resultLine = lines[lines.length - 1]
-              const result = JSON.parse(resultLine)
+          pythonProcess.on('close', (code) => {
+            if (code === 0) {
+              try {
+                // Find the final result JSON
+                const lines = stdout.split('\n').filter((line) => line.trim())
+                const resultLine = lines[lines.length - 1]
+                const result = JSON.parse(resultLine)
 
-              console.log('✅ Frame decimation completed')
-              frameDecimationState = null // Clear state on completion
-              resolve(result)
-            } catch (error) {
-              const errorMessage = error instanceof Error ? error.message : String(error)
-              console.error('❌ Failed to parse frame decimation output:', errorMessage)
+                console.log('✅ Frame decimation completed')
+                frameDecimationState = null // Clear state on completion
+                resolve(result)
+              } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : String(error)
+                console.error('❌ Failed to parse frame decimation output:', errorMessage)
+                frameDecimationState = null // Clear state on error
+                reject(new Error(`Failed to parse output: ${errorMessage}`))
+              }
+            } else {
+              console.error('❌ Frame decimation failed:', stderr)
               frameDecimationState = null // Clear state on error
-              reject(new Error(`Failed to parse output: ${errorMessage}`))
+              reject(new Error(`Frame decimation failed: ${stderr}`))
             }
-          } else {
-            console.error('❌ Frame decimation failed:', stderr)
-            frameDecimationState = null // Clear state on error
-            reject(new Error(`Frame decimation failed: ${stderr}`))
-          }
-        })
+          })
 
-        pythonProcess.on('error', (error) => {
-          console.error('❌ Failed to start frame decimation process:', error.message)
-          reject(new Error(`Failed to start process: ${error.message}`))
+          pythonProcess.on('error', (error) => {
+            console.error('❌ Failed to start frame decimation process:', error.message)
+            reject(new Error(`Failed to start process: ${error.message}`))
+          })
         })
-      })
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      console.error('❌ Frame decimation error:', errorMessage)
-      throw new Error(errorMessage)
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        console.error('❌ Frame decimation error:', errorMessage)
+        throw new Error(errorMessage)
+      }
     }
-  })
+  )
 
   // Handler to check frame decimation status
   ipcMain.handle('get-frame-decimation-status', async () => {
     if (!frameDecimationState) {
       return { isProcessing: false }
     }
-    
+
     const elapsedTime = Math.floor((Date.now() - frameDecimationState.startTime) / 1000)
-    
+
     return {
       isProcessing: frameDecimationState.isProcessing,
       inputPath: frameDecimationState.inputPath,
@@ -863,7 +876,58 @@ app.whenReady().then(() => {
       progress: frameDecimationState.progress,
       current: frameDecimationState.current,
       total: frameDecimationState.total,
-      elapsedTime
+      elapsedTime,
+      queue: frameDecimationState.queue,
+      currentProcessingId: frameDecimationState.currentProcessingId,
+      outputFolder: frameDecimationState.outputFolder
+    }
+  })
+
+  // Handler to save queue to file
+  ipcMain.handle('save-frame-decimation-queue', async (_, queue) => {
+    try {
+      const queuePath = getQueueFilePath()
+      await fs.writeFile(queuePath, JSON.stringify(queue, null, 2), 'utf-8')
+      console.log('✅ Frame decimation queue saved to file')
+      return { success: true }
+    } catch (error) {
+      console.error('❌ Failed to save queue to file:', error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  // Handler to load queue from file
+  ipcMain.handle('load-frame-decimation-queue', async () => {
+    try {
+      const queuePath = getQueueFilePath()
+      const data = await fs.readFile(queuePath, 'utf-8')
+      const queue = JSON.parse(data)
+      console.log('✅ Frame decimation queue loaded from file')
+      return { success: true, queue }
+    } catch (error) {
+      // File not found is not an error, just means no queue exists
+      if ((error as any).code === 'ENOENT') {
+        return { success: true, queue: [] }
+      }
+      console.error('❌ Failed to load queue from file:', error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  // Handler to clear queue file
+  ipcMain.handle('clear-frame-decimation-queue', async () => {
+    try {
+      const queuePath = getQueueFilePath()
+      await fs.unlink(queuePath)
+      console.log('✅ Frame decimation queue file cleared')
+      return { success: true }
+    } catch (error) {
+      // File not found is not an error
+      if ((error as any).code === 'ENOENT') {
+        return { success: true }
+      }
+      console.error('❌ Failed to clear queue file:', error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
     }
   })
 

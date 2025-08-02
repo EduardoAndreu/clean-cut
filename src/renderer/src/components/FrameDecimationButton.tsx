@@ -15,10 +15,9 @@ const FrameDecimationButton: React.FC<FrameDecimationButtonProps> = ({
   onClick,
   queueLength
 }) => {
-  const buttonText = queueLength && queueLength > 1 
-    ? `Process ${queueLength} Videos` 
-    : 'Process Video'
-    
+  const buttonText =
+    queueLength && queueLength > 1 ? `Process ${queueLength} Videos` : 'Process Video'
+
   return (
     <Button onClick={onClick} disabled={isProcessing} className="w-full" size="lg">
       {isProcessing ? (

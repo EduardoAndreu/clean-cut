@@ -125,7 +125,10 @@ declare global {
       }>
       processFrameDecimation: (
         inputPath: string,
-        outputPath: string
+        outputPath: string,
+        queue?: any[],
+        currentProcessingId?: string | null,
+        outputFolder?: string
       ) => Promise<{
         success: boolean
         outputPath?: string
@@ -144,6 +147,22 @@ declare global {
         current?: number
         total?: number
         elapsedTime?: number
+        queue?: any[]
+        currentProcessingId?: string | null
+        outputFolder?: string
+      }>
+      saveFrameDecimationQueue: (queue: any[]) => Promise<{
+        success: boolean
+        error?: string
+      }>
+      loadFrameDecimationQueue: () => Promise<{
+        success: boolean
+        queue?: any[]
+        error?: string
+      }>
+      clearFrameDecimationQueue: () => Promise<{
+        success: boolean
+        error?: string
       }>
     }
   }

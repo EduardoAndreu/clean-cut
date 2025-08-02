@@ -29,13 +29,35 @@ def get_frame_count(input_path):
         return 0
 
 
+def get_video_duration(input_path):
+    """Get video duration in seconds"""
+    try:
+        cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            input_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return float(result.stdout.strip())
+    except Exception as e:
+        print(f"Error getting duration: {e}", file=sys.stderr)
+        return None
+
+
 def process_video(input_path, output_path):
     """Process video with mpdecimate filter"""
-    # Get original frame count
+    # Get original frame count and duration
     original_frames = get_frame_count(input_path)
+    duration = get_video_duration(input_path)
     
     if original_frames == 0:
         raise Exception("Could not determine video frame count")
+    
+    if duration is None:
+        print("Warning: Could not determine video duration, falling back to frame-based progress", file=sys.stderr)
     
     # FFmpeg command with mpdecimate
     cmd = [
@@ -60,7 +82,7 @@ def process_video(input_path, output_path):
     
     # Collect progress data
     progress_data = {}
-    last_reported_frame = -1
+    last_reported_progress = -1
     
     # Read stderr for progress
     for line in process.stderr:
@@ -79,29 +101,42 @@ def process_video(input_path, output_path):
             progress_data[key] = value
             
             # When we get 'progress=continue' or 'progress=end', we have a complete update
-            if key == 'progress' and 'frame' in progress_data:
+            if key == 'progress':
                 try:
-                    current_frame = int(progress_data.get('frame', 0))
+                    progress_percentage = 0
                     
-                    # Only send update if frame count changed
-                    if current_frame != last_reported_frame and current_frame > 0:
-                        last_reported_frame = current_frame
-                        
-                        # Simple progress based on output frames
-                        # Since we can't know exact input progress with mpdecimate,
-                        # we estimate based on output frames
-                        progress_percentage = (current_frame / original_frames) * 100 if original_frames > 0 else 0
+                    # Primary: Use time-based progress if available
+                    if 'out_time_ms' in progress_data and duration:
+                        current_time_ms = int(progress_data.get('out_time_ms', 0))
+                        current_time = current_time_ms / 1000000.0  # Convert microseconds to seconds
+                        progress_percentage = (current_time / duration) * 100
+                    
+                    # Fallback: Use frame-based progress
+                    elif 'frame' in progress_data:
+                        current_frame = int(progress_data.get('frame', 0))
+                        # Conservative estimate - cap at 95% until complete
+                        progress_percentage = min((current_frame / original_frames) * 100, 95) if original_frames > 0 else 0
+                    
+                    # Only send update if progress changed significantly (at least 0.5%)
+                    if abs(progress_percentage - last_reported_progress) >= 0.5 and progress_percentage > 0:
+                        last_reported_progress = progress_percentage
                         
                         progress_json = {
                             "type": "progress",
-                            "current": current_frame,
-                            "total": original_frames,
-                            "percentage": min(progress_percentage, 100)
+                            "percentage": min(progress_percentage, 99.9)  # Never report 100% until actually done
                         }
+                        
+                        # Include additional debug info if available
+                        if 'frame' in progress_data:
+                            progress_json["current_frame"] = int(progress_data.get('frame', 0))
+                        if 'out_time_ms' in progress_data:
+                            progress_json["time_ms"] = int(progress_data.get('out_time_ms', 0))
+                        
                         print(json.dumps(progress_json))
                         sys.stdout.flush()
-                        
-                        # Clear progress_data for next update
+                    
+                    # Clear progress_data for next update
+                    if progress_percentage > 0:  # Only clear if we had valid progress
                         progress_data = {}
                         
                 except (ValueError, KeyError) as e:

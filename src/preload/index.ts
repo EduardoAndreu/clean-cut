@@ -42,9 +42,25 @@ const cleanCutAPI = {
   muteSilenceSegments: (sessionId?: string, segmentIds?: string[]) =>
     ipcRenderer.invoke('mute-silence-segments', sessionId, segmentIds),
   clearSilenceSessions: () => ipcRenderer.invoke('clear-silence-sessions'),
-  processFrameDecimation: (inputPath: string, outputPath: string) =>
-    ipcRenderer.invoke('process-frame-decimation', { inputPath, outputPath }),
-  getFrameDecimationStatus: () => ipcRenderer.invoke('get-frame-decimation-status')
+  processFrameDecimation: (
+    inputPath: string,
+    outputPath: string,
+    queue?: any[],
+    currentProcessingId?: string | null,
+    outputFolder?: string
+  ) =>
+    ipcRenderer.invoke('process-frame-decimation', {
+      inputPath,
+      outputPath,
+      queue,
+      currentProcessingId,
+      outputFolder
+    }),
+  getFrameDecimationStatus: () => ipcRenderer.invoke('get-frame-decimation-status'),
+  saveFrameDecimationQueue: (queue: any[]) =>
+    ipcRenderer.invoke('save-frame-decimation-queue', queue),
+  loadFrameDecimationQueue: () => ipcRenderer.invoke('load-frame-decimation-queue'),
+  clearFrameDecimationQueue: () => ipcRenderer.invoke('clear-frame-decimation-queue')
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to
