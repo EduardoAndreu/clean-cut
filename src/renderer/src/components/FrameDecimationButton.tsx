@@ -4,11 +4,13 @@ import { Button } from './ui/button'
 
 interface FrameDecimationButtonProps {
   isProcessing: boolean
+  isEncoding?: boolean
   onClick: () => void
 }
 
 const FrameDecimationButton: React.FC<FrameDecimationButtonProps> = ({
   isProcessing,
+  isEncoding,
   onClick
 }) => {
   return (
@@ -16,7 +18,7 @@ const FrameDecimationButton: React.FC<FrameDecimationButtonProps> = ({
       {isProcessing ? (
         <>
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Processing Video...
+          {isEncoding ? 'Encoding...' : 'Processing Video...'}
         </>
       ) : (
         <>

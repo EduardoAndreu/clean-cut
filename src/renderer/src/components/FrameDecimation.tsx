@@ -21,6 +21,7 @@ const FrameDecimation: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false)
   const [error, setError] = useState<string>('')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isEncoding, setIsEncoding] = useState(false)
   const [progress, setProgress] = useState(0)
   const [results, setResults] = useState<VideoStats | null>(null)
   const [timeElapsed, setTimeElapsed] = useState(0)
@@ -124,6 +125,8 @@ const FrameDecimation: React.FC = () => {
         duration?: number
       }
     ) => {
+      // Once we receive progress, we're no longer encoding
+      setIsEncoding(false)
       setProgress(data.percentage ?? (data.current / data.total) * 100)
       if (data.timeElapsed !== undefined) setTimeElapsed(data.timeElapsed)
       if (data.duration !== undefined) setTotalDuration(data.duration)
@@ -140,6 +143,7 @@ const FrameDecimation: React.FC = () => {
     if (isProcessing) return
 
     setIsProcessing(true)
+    setIsEncoding(true) // Start in encoding state
     setError('') // Clear any previous errors
 
     try {
@@ -148,12 +152,14 @@ const FrameDecimation: React.FC = () => {
       if (result.success && result.stats) {
         setResults(result.stats)
         setIsProcessing(false)
+        setIsEncoding(false)
         setProgress(0)
         setTimeElapsed(0)
         setTotalDuration(0)
       } else {
         setError(result.error || 'Failed to process video')
         setIsProcessing(false)
+        setIsEncoding(false)
         setProgress(0)
         setTimeElapsed(0)
         setTotalDuration(0)
@@ -162,6 +168,7 @@ const FrameDecimation: React.FC = () => {
       console.error('Frame decimation error:', error)
       setError(error instanceof Error ? error.message : 'An unexpected error occurred')
       setIsProcessing(false)
+      setIsEncoding(false)
       setProgress(0)
       setTimeElapsed(0)
       setTotalDuration(0)
@@ -265,6 +272,7 @@ const FrameDecimation: React.FC = () => {
               <div className="space-y-4">
                 <FrameDecimationButton
                   isProcessing={isProcessing}
+                  isEncoding={isEncoding}
                   onClick={handleProcessVideo}
                 />
 
@@ -272,30 +280,32 @@ const FrameDecimation: React.FC = () => {
                 {isProcessing && (
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
-                      <span>Processing video...</span>
-                      <span>{Math.round(progress)}%</span>
+                      <span>{isEncoding ? 'Encoding video...' : 'Processing video...'}</span>
+                      <span>{isEncoding ? '' : `${Math.round(progress)}%`}</span>
                     </div>
-                    <Progress value={progress} className="mb-2" />
-                    <div className="grid grid-cols-2 gap-4 text-xs text-gray-500 dark:text-gray-500">
-                      <div>
-                        <span className="font-medium">Time elapsed:</span> {formatTime(timeElapsed)}
+                    <Progress value={isEncoding ? 0 : progress} className="mb-2" />
+                    {!isEncoding && (
+                      <div className="grid grid-cols-2 gap-4 text-xs text-gray-500 dark:text-gray-500">
+                        <div>
+                          <span className="font-medium">Time elapsed:</span> {formatTime(timeElapsed)}
+                        </div>
+                        <div className="text-right">
+                          <span className="font-medium">Time remaining:</span> {estimateTimeRemaining()}
+                        </div>
+                        {totalDuration > 0 && (
+                          <>
+                            <div>
+                              <span className="font-medium">Video duration:</span>{' '}
+                              {formatTime(totalDuration)}
+                            </div>
+                            <div className="text-right">
+                              <span className="font-medium">Processing speed:</span>{' '}
+                              {timeElapsed > 0 ? `${(timeElapsed / totalDuration).toFixed(2)}x` : '...'}
+                            </div>
+                          </>
+                        )}
                       </div>
-                      <div className="text-right">
-                        <span className="font-medium">Time remaining:</span> {estimateTimeRemaining()}
-                      </div>
-                      {totalDuration > 0 && (
-                        <>
-                          <div>
-                            <span className="font-medium">Video duration:</span>{' '}
-                            {formatTime(totalDuration)}
-                          </div>
-                          <div className="text-right">
-                            <span className="font-medium">Processing speed:</span>{' '}
-                            {timeElapsed > 0 ? `${(timeElapsed / totalDuration).toFixed(2)}x` : '...'}
-                          </div>
-                        </>
-                      )}
-                    </div>
+                    )}
                   </div>
                 )}
               </div>
