@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { Upload, FolderOpen } from 'lucide-react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -38,8 +38,14 @@ const FrameDecimation: React.FC = () => {
   
   // Queue state
   const [queue, setQueue] = useState<QueueItem[]>([])
+  const queueRef = useRef<QueueItem[]>([])
   const [outputFolder, setOutputFolder] = useState<string>('')
   const [currentProcessingId, setCurrentProcessingId] = useState<string | null>(null)
+  
+  // Keep ref in sync with state
+  useEffect(() => {
+    queueRef.current = queue
+  }, [queue])
 
   // Check for ongoing processing on mount
   useEffect(() => {
@@ -268,8 +274,8 @@ const FrameDecimation: React.FC = () => {
   }, [currentProcessingId])
 
   const processNextInQueue = async () => {
-    // Find next pending item
-    const nextItem = queue.find(item => item.status === 'pending')
+    // Find next pending item using ref to get latest queue state
+    const nextItem = queueRef.current.find(item => item.status === 'pending')
     if (!nextItem) {
       // Queue complete
       setIsProcessing(false)
