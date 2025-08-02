@@ -580,7 +580,7 @@ const FrameDecimation: React.FC = () => {
                     <div key={item.id} className="flex items-center gap-2 text-sm">
                       <span className="flex-shrink-0">
                         {item.status === 'completed' && <span className="text-green-600">✓</span>}
-                        {item.status === 'processing' && <span className="text-blue-600">⏳</span>}
+                        {item.status === 'processing' && <span className="text-blue-600">●</span>}
                         {item.status === 'pending' && <span className="text-gray-400">○</span>}
                         {item.status === 'error' && <span className="text-red-600">✗</span>}
                       </span>
