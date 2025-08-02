@@ -164,6 +164,17 @@ declare global {
         success: boolean
         error?: string
       }>
+      updateFrameDecimationQueueItem: (
+        id: string,
+        updates: any
+      ) => Promise<{
+        success: boolean
+      }>
+      getFrameDecimationQueue: () => Promise<{
+        success: boolean
+        queue: any[]
+        currentProcessingId: string | null
+      }>
     }
   }
 }

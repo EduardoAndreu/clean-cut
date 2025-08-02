@@ -60,7 +60,10 @@ const cleanCutAPI = {
   saveFrameDecimationQueue: (queue: any[]) =>
     ipcRenderer.invoke('save-frame-decimation-queue', queue),
   loadFrameDecimationQueue: () => ipcRenderer.invoke('load-frame-decimation-queue'),
-  clearFrameDecimationQueue: () => ipcRenderer.invoke('clear-frame-decimation-queue')
+  clearFrameDecimationQueue: () => ipcRenderer.invoke('clear-frame-decimation-queue'),
+  updateFrameDecimationQueueItem: (id: string, updates: any) =>
+    ipcRenderer.invoke('update-frame-decimation-queue-item', { id, updates }),
+  getFrameDecimationQueue: () => ipcRenderer.invoke('get-frame-decimation-queue')
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

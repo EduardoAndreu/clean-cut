@@ -77,8 +77,61 @@ interface FrameDecimationState {
 
 let frameDecimationState: FrameDecimationState | null = null
 
+// Queue state management
+interface QueueItem {
+  id: string
+  inputPath: string
+  outputPath: string
+  status: 'pending' | 'processing' | 'completed' | 'error'
+  progress?: number
+  stats?: any
+  error?: string
+}
+
+let frameDecimationQueue: QueueItem[] = []
+let currentProcessingId: string | null = null
+
 // Queue persistence file path
-const getQueueFilePath = () => join(app.getPath('userData'), 'frame-decimation-queue.json')
+const getQueueFilePath = () => {
+  const tempDir = join(app.getAppPath(), '.temp')
+  // Ensure .temp directory exists
+  fs.mkdir(tempDir, { recursive: true }).catch(() => {})
+  return join(tempDir, 'frame-decimation-queue.json')
+}
+
+// Save queue to file
+const saveQueueToFile = async () => {
+  try {
+    const queuePath = getQueueFilePath()
+    await fs.writeFile(queuePath, JSON.stringify(frameDecimationQueue, null, 2))
+  } catch (error) {
+    console.error('Failed to save queue to file:', error)
+  }
+}
+
+// Load queue from file
+const loadQueueFromFile = async () => {
+  try {
+    const queuePath = getQueueFilePath()
+    const data = await fs.readFile(queuePath, 'utf-8')
+    frameDecimationQueue = JSON.parse(data)
+    return frameDecimationQueue
+  } catch (error) {
+    // File doesn't exist or is invalid, start with empty queue
+    frameDecimationQueue = []
+    return []
+  }
+}
+
+// Update queue item
+const updateQueueItem = (id: string, updates: Partial<QueueItem>) => {
+  frameDecimationQueue = frameDecimationQueue.map((item) =>
+    item.id === id ? { ...item, ...updates } : item
+  )
+  saveQueueToFile()
+  // Notify renderer of queue update
+  safelyNotifyRenderer('frame-decimation-queue-updated', frameDecimationQueue)
+}
 
 // Helper function to safely send messages to renderer
 function safelyNotifyRenderer(channel: string, data: any) {
@@ -759,12 +812,23 @@ app.whenReady().then(() => {
   // Handler for processing frame decimation
   ipcMain.handle(
     'process-frame-decimation',
-    async (_, { inputPath, outputPath, queue, currentProcessingId, outputFolder }) => {
+    async (
+      _,
+      { inputPath, outputPath, queue, currentProcessingId: processingId, outputFolder }
+    ) => {
       try {
         const pythonPath = join(__dirname, PYTHON_BACKEND_PATHS.PYTHON_EXECUTABLE)
         const scriptPath = join(__dirname, PYTHON_BACKEND_PATHS.FRAME_DECIMATOR)
 
         console.log('🎬 Starting frame decimation processing')
+
+        // Set current processing ID in main process
+        currentProcessingId = processingId || null
+
+        // Update queue item status to processing
+        if (currentProcessingId) {
+          updateQueueItem(currentProcessingId, { status: 'processing' })
+        }
 
         // Initialize frame decimation state
         frameDecimationState = {
@@ -776,7 +840,7 @@ app.whenReady().then(() => {
           total: 0,
           startTime: Date.now(),
           queue,
-          currentProcessingId,
+          currentProcessingId: processingId,
           outputFolder
         }
 
@@ -803,6 +867,11 @@ app.whenReady().then(() => {
                     frameDecimationState.current = parsed.current
                     frameDecimationState.total = parsed.total
                     frameDecimationState.progress = parsed.percentage || 0
+                  }
+
+                  // Update queue item progress if processing from queue
+                  if (currentProcessingId) {
+                    updateQueueItem(currentProcessingId, { progress: parsed.percentage || 0 })
                   }
 
                   // Notify renderer of progress with percentage
@@ -833,17 +902,47 @@ app.whenReady().then(() => {
                 const result = JSON.parse(resultLine)
 
                 console.log('✅ Frame decimation completed')
+
+                // Update queue item status to completed
+                if (currentProcessingId) {
+                  updateQueueItem(currentProcessingId, {
+                    status: 'completed',
+                    stats: result.stats
+                  })
+                }
+
                 frameDecimationState = null // Clear state on completion
+                currentProcessingId = null
                 resolve(result)
               } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error)
                 console.error('❌ Failed to parse frame decimation output:', errorMessage)
+
+                // Update queue item status to error
+                if (currentProcessingId) {
+                  updateQueueItem(currentProcessingId, {
+                    status: 'error',
+                    error: `Failed to parse output: ${errorMessage}`
+                  })
+                }
+
                 frameDecimationState = null // Clear state on error
+                currentProcessingId = null
                 reject(new Error(`Failed to parse output: ${errorMessage}`))
               }
             } else {
               console.error('❌ Frame decimation failed:', stderr)
+
+              // Update queue item status to error
+              if (currentProcessingId) {
+                updateQueueItem(currentProcessingId, {
+                  status: 'error',
+                  error: `Frame decimation failed: ${stderr}`
+                })
+              }
+
               frameDecimationState = null // Clear state on error
+              currentProcessingId = null
               reject(new Error(`Frame decimation failed: ${stderr}`))
             }
           })
@@ -883,52 +982,39 @@ app.whenReady().then(() => {
     }
   })
 
-  // Handler to save queue to file
+  // Handler to save queue to file (now managed by main process)
   ipcMain.handle('save-frame-decimation-queue', async (_, queue) => {
-    try {
-      const queuePath = getQueueFilePath()
-      await fs.writeFile(queuePath, JSON.stringify(queue, null, 2), 'utf-8')
-      console.log('✅ Frame decimation queue saved to file')
-      return { success: true }
-    } catch (error) {
-      console.error('❌ Failed to save queue to file:', error)
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
-    }
+    frameDecimationQueue = queue
+    await saveQueueToFile()
+    console.log('✅ Frame decimation queue saved to file')
+    return { success: true }
   })
 
   // Handler to load queue from file
   ipcMain.handle('load-frame-decimation-queue', async () => {
-    try {
-      const queuePath = getQueueFilePath()
-      const data = await fs.readFile(queuePath, 'utf-8')
-      const queue = JSON.parse(data)
-      console.log('✅ Frame decimation queue loaded from file')
-      return { success: true, queue }
-    } catch (error) {
-      // File not found is not an error, just means no queue exists
-      if ((error as any).code === 'ENOENT') {
-        return { success: true, queue: [] }
-      }
-      console.error('❌ Failed to load queue from file:', error)
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
-    }
+    const queue = await loadQueueFromFile()
+    console.log('✅ Frame decimation queue loaded from file')
+    return { success: true, queue }
   })
 
   // Handler to clear queue file
   ipcMain.handle('clear-frame-decimation-queue', async () => {
-    try {
-      const queuePath = getQueueFilePath()
-      await fs.unlink(queuePath)
-      console.log('✅ Frame decimation queue file cleared')
-      return { success: true }
-    } catch (error) {
-      // File not found is not an error
-      if ((error as any).code === 'ENOENT') {
-        return { success: true }
-      }
-      console.error('❌ Failed to clear queue file:', error)
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
-    }
+    frameDecimationQueue = []
+    currentProcessingId = null
+    await saveQueueToFile()
+    console.log('✅ Frame decimation queue file cleared')
+    return { success: true }
+  })
+
+  // Handler to update queue item from renderer
+  ipcMain.handle('update-frame-decimation-queue-item', async (_, { id, updates }) => {
+    updateQueueItem(id, updates)
+    return { success: true }
+  })
+
+  // Handler to get current queue state
+  ipcMain.handle('get-frame-decimation-queue', async () => {
+    return { success: true, queue: frameDecimationQueue, currentProcessingId }
   })
 
   // Create WebSocket server for Premiere Pro communication
@@ -1097,11 +1183,19 @@ app.whenReady().then(() => {
 
   // Clear frame decimation queue in development mode
   if (is.dev) {
-    const queuePath = getQueueFilePath()
+    const tempDir = join(app.getAppPath(), '.temp')
+    const queuePath = join(tempDir, 'frame-decimation-queue.json')
     fs.unlink(queuePath).catch(() => {
       // Ignore error if file doesn't exist
     })
     console.log('🧹 Cleared frame decimation queue (development mode)')
+  } else {
+    // Load existing queue in production
+    loadQueueFromFile().then((queue) => {
+      if (queue.length > 0) {
+        console.log(`📋 Loaded ${queue.length} items from frame decimation queue`)
+      }
+    })
   }
 
   createWindow()

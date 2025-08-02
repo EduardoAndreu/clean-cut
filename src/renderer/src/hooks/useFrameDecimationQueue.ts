@@ -41,25 +41,19 @@ export const useFrameDecimationQueue = (): UseFrameDecimationQueueReturn => {
   const queueRef = useRef<QueueItem[]>([])
   const processingCheckIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Keep ref in sync with state and save to file
+  // Keep ref in sync with state
   useEffect(() => {
     queueRef.current = queue
-
-    // Save queue to file whenever it changes
-    if (queue.length > 0) {
-      window.cleanCutAPI.saveFrameDecimationQueue(queue).catch((error) => {
-        console.error('Failed to save queue to file:', error)
-      })
-    }
   }, [queue])
 
-  // Load queue from storage on mount
+  // Load queue from main process on mount and listen for updates
   useEffect(() => {
     const loadQueue = async (): Promise<void> => {
       try {
-        const queueResult = await window.cleanCutAPI.loadFrameDecimationQueue()
-        if (queueResult.success && queueResult.queue && queueResult.queue.length > 0) {
+        const queueResult = await window.cleanCutAPI.getFrameDecimationQueue()
+        if (queueResult.success && queueResult.queue) {
           setQueue(queueResult.queue)
+          setCurrentProcessingId(queueResult.currentProcessingId)
 
           // Extract output folder from first item if not already set
           if (!outputFolder && queueResult.queue.length > 0) {
@@ -67,13 +61,34 @@ export const useFrameDecimationQueue = (): UseFrameDecimationQueueReturn => {
             const folder = firstItem.outputPath.substring(0, firstItem.outputPath.lastIndexOf('/'))
             setOutputFolder(folder)
           }
+
+          // Check if anything is processing
+          const processingItem = queueResult.queue.find((item) => item.status === 'processing')
+          setIsProcessing(!!processingItem)
         }
       } catch (error) {
-        console.error('Error loading queue from file:', error)
+        console.error('Error loading queue from main process:', error)
       }
     }
 
     loadQueue()
+
+    // Listen for queue updates from main process
+    const handleQueueUpdate = (_event: unknown, updatedQueue: QueueItem[]): void => {
+      setQueue(updatedQueue)
+
+      // Update processing state
+      const processingItem = updatedQueue.find((item) => item.status === 'processing')
+      setIsProcessing(!!processingItem)
+      setCurrentProcessingId(processingItem?.id || null)
+    }
+
+    window.electron.ipcRenderer.on('frame-decimation-queue-updated', handleQueueUpdate)
+
+    return () => {
+      window.electron.ipcRenderer.removeAllListeners('frame-decimation-queue-updated')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Cleanup on unmount
@@ -110,17 +125,27 @@ export const useFrameDecimationQueue = (): UseFrameDecimationQueueReturn => {
       }))
 
       setQueue(queueItems)
+
+      // Save to main process
+      window.cleanCutAPI.saveFrameDecimationQueue(queueItems).catch((error) => {
+        console.error('Failed to save queue:', error)
+      })
     },
     [outputFolder]
   )
 
-  const updateQueueItemProgress = useCallback((id: string, progress: number) => {
-    setQueue((prev) => prev.map((item) => (item.id === id ? { ...item, progress } : item)))
+  const updateQueueItemProgress = useCallback((_id: string, _progress: number) => {
+    // Update is now handled by main process through IPC events
+    // This is kept for compatibility but the actual update happens in main
   }, [])
 
   const updateQueueItemStatus = useCallback(
     (id: string, status: QueueItem['status'], data?: { stats?: VideoStats; error?: string }) => {
-      setQueue((prev) => prev.map((item) => (item.id === id ? { ...item, status, ...data } : item)))
+      // Update is now handled by main process
+      // This is kept for compatibility but the actual update happens in main
+      window.cleanCutAPI.updateFrameDecimationQueueItem(id, { status, ...data }).catch((error) => {
+        console.error('Failed to update queue item:', error)
+      })
     },
     []
   )
@@ -133,10 +158,7 @@ export const useFrameDecimationQueue = (): UseFrameDecimationQueueReturn => {
       setIsProcessing(false)
       setCurrentProcessingId(null)
 
-      // Clear the queue file since processing is complete
-      window.cleanCutAPI.clearFrameDecimationQueue().catch((error) => {
-        console.error('Failed to clear queue file:', error)
-      })
+      // Queue will be cleared by main process when all items are complete
 
       return null
     }
