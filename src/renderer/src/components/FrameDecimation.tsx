@@ -238,7 +238,7 @@ const FrameDecimation: React.FC = () => {
                 <AccordionItem value="important-notes">
                   <AccordionTrigger className="text-sm">Important Notes</AccordionTrigger>
                   <AccordionContent>
-                    <ul className="list-disc list-inside space-y-2 text-xs text-gray-500 dark:text-gray-400">
+                    <ul className="list-disc list-inside space-y-2 text-xs text-gray-500 dark:text-gray-300">
                       <li>
                         This will take a while to process, depending on your computer specs and the
                         length of your video.
@@ -257,7 +257,7 @@ const FrameDecimation: React.FC = () => {
             {/* File Drop Area */}
             <div
               className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                isDragging ? 'border-primary bg-primary/10' : 'border-gray-300 dark:border-gray-700'
+                isDragging ? 'border-primary bg-primary/10' : 'border-gray-300 dark:border-gray-500'
               }`}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
@@ -265,11 +265,11 @@ const FrameDecimation: React.FC = () => {
               onClick={handleFileInput}
             >
               <Upload className="mx-auto h-12 w-12 text-gray-400 mb-3" />
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
                 Drag and drop your video file here
               </p>
-              <p className="text-xs text-gray-500 dark:text-gray-500">or click to browse</p>
-              <p className="text-xs text-gray-400 dark:text-gray-600 mt-2">
+              <p className="text-xs text-gray-500 dark:text-gray-300">or click to browse</p>
+              <p className="text-xs text-gray-400 dark:text-gray-400 mt-2">
                 Supported: MP4, MOV, AVI, MKV, WebM, FLV, WMV, M4V
               </p>
             </div>
