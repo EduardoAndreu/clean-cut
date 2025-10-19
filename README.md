@@ -4,6 +4,9 @@ Intelligent audio editing automation for Adobe Premiere Pro with silence detecti
 
 ![Clean-Cut Interface](resources/screenshot.png)
 
+## 🥇Looking for Windows Developers! 
+Raise an issue with how can I get in touch. Developers on Mac welcomed too 😊 but developers on Windows very much needed to make this free software accessible to all.
+
 ## Prerequisites
 
 - **Node.js** v22+
