@@ -134,6 +134,10 @@ function refreshSequenceInfo() {
 
   // Call ExtendScript function to get active sequence info
   cs.evalScript('getActiveSequenceInfo()', function (result) {
+    // DEBUG: Log raw result to see what's actually being returned
+    console.log('RAW RESULT from getActiveSequenceInfo():', result)
+    addLogEntry(`📋 Raw result: ${result.substring(0, 100)}...`, 'info')
+    
     try {
       const resultData = JSON.parse(result)
       if (resultData.success) {
@@ -147,6 +151,7 @@ function refreshSequenceInfo() {
       }
     } catch (e) {
       addLogEntry(`❌ Error parsing sequence info: ${e.message}`, 'error')
+      addLogEntry(`📋 Result type: ${typeof result}, Length: ${result.length}`, 'error')
       updateSequenceDisplay(null)
       updateSequenceDetailsDisplay(null)
     }
@@ -179,8 +184,36 @@ function connect() {
       ws.send(JSON.stringify(handshakeMessage))
       addLogEntry('🤝 Handshake sent', 'info')
 
-      // Automatically get sequence info when connected
+      // Test if the host script loaded correctly
       setTimeout(() => {
+        addLogEntry('🔍 Testing ExtendScript connection...', 'info')
+        
+        // Ultra simple test - no JSON
+        cs.evalScript('test1()', function(result) {
+          addLogEntry(`Test1 result: ${result}`, result.includes('works') ? 'success' : 'error')
+        })
+        
+        // Simple JSON test
+        cs.evalScript('test2()', function(result) {
+          addLogEntry(`Test2 result: ${result}`, result.includes('test2') ? 'success' : 'error')
+        })
+        
+        // Test with Date
+        cs.evalScript('test3()', function(result) {
+          addLogEntry(`Test3 result: ${result}`, result.includes('time') ? 'success' : 'error')
+        })
+        
+        // Test testConnection
+        cs.evalScript('testConnection()', function(testResult) {
+          addLogEntry(`TestConnection result: ${testResult}`, testResult.includes('ERROR') ? 'error' : 'success')
+        })
+        
+        // Check if getActiveSequenceInfo exists
+        cs.evalScript('typeof getActiveSequenceInfo', function(typeResult) {
+          addLogEntry(`📊 getActiveSequenceInfo type: ${typeResult}`, 'info')
+        })
+        
+        // Then get sequence info
         refreshSequenceInfo()
       }, 1000) // Small delay to ensure connection is fully established
     }
