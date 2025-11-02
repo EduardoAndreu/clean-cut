@@ -1208,13 +1208,21 @@ function deleteSilenceSegments(segmentsJSON) {
       })
     }
 
-    logMessage('Identifying silence clips for deletion...')
+    logMessage('Identifying and deleting silence clips...')
     logMessage('Segments to delete: ' + segments.length)
 
-    var clipsToDelete = []
-    var tolerance = 0.05 // 50ms tolerance for time matching (tighter than before)
+    var tolerance = 0.15 // 150ms tolerance for time matching (increased for post-cut precision)
+    var clipsDeleted = 0
+    var totalClipsFound = 0
+    var results = []
+    var errors = []
 
-    // Search through all tracks to find clips that match our silence segments
+    // Sort segments by start time (latest first) to prevent index shifting during deletion
+    segments.sort(function (a, b) {
+      return b.start - a.start
+    })
+
+    // Process each segment: find and delete clips immediately
     for (var s = 0; s < segments.length; s++) {
       var segment = segments[s]
       var segmentStart = segment.start
@@ -1222,7 +1230,11 @@ function deleteSilenceSegments(segmentsJSON) {
       var segmentDuration = segmentEnd - segmentStart
 
       logMessage(
-        'Looking for silence segment: ' +
+        'Processing silence segment ' +
+          (s + 1) +
+          '/' +
+          segments.length +
+          ': ' +
           segmentStart +
           's to ' +
           segmentEnd +
@@ -1237,6 +1249,8 @@ function deleteSilenceSegments(segmentsJSON) {
         continue
       }
 
+      var clipsToDeleteNow = []
+
       // Check audio tracks first (silence detection is primarily audio-based)
       for (var a = 0; a < sequence.audioTracks.numTracks; a++) {
         var audioTrack = sequence.audioTracks[a]
@@ -1248,13 +1262,44 @@ function deleteSilenceSegments(segmentsJSON) {
             var clipEnd = parseFloat(clip.end.seconds)
             var clipDuration = clipEnd - clipStart
 
-            // Check if this clip matches our silence segment (within tolerance)
-            // Must match start time, end time, AND duration
+            // Improved matching: Check multiple conditions
+            var startsNearSegmentStart = Math.abs(clipStart - segmentStart) < tolerance
+            var endsNearSegmentEnd = Math.abs(clipEnd - segmentEnd) < tolerance
+            var durationMatches = Math.abs(clipDuration - segmentDuration) < tolerance
+
+            // Also check if clip is contained within the silence segment (for clips slightly inside)
+            var isContainedInSegment =
+              clipStart >= segmentStart - tolerance && clipEnd <= segmentEnd + tolerance
+
+            // Check if all three match OR if clip is contained in segment
+            var isMatch =
+              (startsNearSegmentStart && endsNearSegmentEnd && durationMatches) ||
+              isContainedInSegment
+
+            // Debug logging for clips near the target area
             if (
-              Math.abs(clipStart - segmentStart) < tolerance &&
-              Math.abs(clipEnd - segmentEnd) < tolerance &&
-              Math.abs(clipDuration - segmentDuration) < tolerance
+              clipStart >= segmentStart - 1.0 &&
+              clipStart <= segmentStart + 1.0 &&
+              clipDuration < segmentDuration + 1.0
             ) {
+              logMessage(
+                '  Checking clip: ' +
+                  clipStart +
+                  's to ' +
+                  clipEnd +
+                  's (dur: ' +
+                  clipDuration +
+                  's)'
+              )
+              logMessage('    Start diff: ' + Math.abs(clipStart - segmentStart).toFixed(3) + 's')
+              logMessage('    End diff: ' + Math.abs(clipEnd - segmentEnd).toFixed(3) + 's')
+              logMessage(
+                '    Duration diff: ' + Math.abs(clipDuration - segmentDuration).toFixed(3) + 's'
+              )
+              logMessage('    Match result: ' + isMatch)
+            }
+
+            if (isMatch) {
               // Additional check: ensure this is likely a silence segment
               // by checking if it's in the middle of what was originally a longer clip
               var isLikelySilence = true
@@ -1265,8 +1310,8 @@ function deleteSilenceSegments(segmentsJSON) {
               }
 
               if (isLikelySilence) {
-                // Mark this clip for deletion
-                clipsToDelete.push({
+                // Mark this clip for immediate deletion
+                clipsToDeleteNow.push({
                   clip: clip,
                   trackIndex: a,
                   clipIndex: ac,
@@ -1279,15 +1324,13 @@ function deleteSilenceSegments(segmentsJSON) {
                 })
 
                 logMessage(
-                  'Found silence clip: ' +
+                  '  Found audio silence clip: ' +
                     clip.name +
-                    ' (' +
-                    clipStart +
-                    's to ' +
-                    clipEnd +
-                    's, duration: ' +
-                    clipDuration +
-                    's)'
+                    ' on track ' +
+                    (a + 1) +
+                    ' (index: ' +
+                    ac +
+                    ')'
                 )
               }
             }
@@ -1295,13 +1338,14 @@ function deleteSilenceSegments(segmentsJSON) {
         }
       }
 
-      // Check video tracks for matching clips (only if we found audio clips)
+      // Check video tracks for matching clips (only if we found audio clips for THIS segment)
       // This ensures we only delete video segments that correspond to audio silence
-      var audioClipsFound = clipsToDelete.filter(function (c) {
-        return !c.isVideo
-      }).length
+      var audioClipsFoundNow = clipsToDeleteNow.length
 
-      if (audioClipsFound > 0) {
+      if (audioClipsFoundNow > 0) {
+        logMessage(
+          '  Found ' + audioClipsFoundNow + ' audio clips, searching for matching video clips...'
+        )
         for (var v = 0; v < sequence.videoTracks.numTracks; v++) {
           var videoTrack = sequence.videoTracks[v]
 
@@ -1312,14 +1356,21 @@ function deleteSilenceSegments(segmentsJSON) {
               var clipEnd = parseFloat(clip.end.seconds)
               var clipDuration = clipEnd - clipStart
 
-              // Check if this clip matches our silence segment (within tolerance)
-              if (
-                Math.abs(clipStart - segmentStart) < tolerance &&
-                Math.abs(clipEnd - segmentEnd) < tolerance &&
-                Math.abs(clipDuration - segmentDuration) < tolerance
-              ) {
-                // Mark this clip for deletion
-                clipsToDelete.push({
+              // Use same improved matching logic as audio tracks
+              var startsNearSegmentStart = Math.abs(clipStart - segmentStart) < tolerance
+              var endsNearSegmentEnd = Math.abs(clipEnd - segmentEnd) < tolerance
+              var durationMatches = Math.abs(clipDuration - segmentDuration) < tolerance
+
+              var isContainedInSegment =
+                clipStart >= segmentStart - tolerance && clipEnd <= segmentEnd + tolerance
+
+              var isMatch =
+                (startsNearSegmentStart && endsNearSegmentEnd && durationMatches) ||
+                isContainedInSegment
+
+              if (isMatch) {
+                // Mark this clip for immediate deletion
+                clipsToDeleteNow.push({
                   clip: clip,
                   trackIndex: v,
                   clipIndex: vc,
@@ -1332,76 +1383,96 @@ function deleteSilenceSegments(segmentsJSON) {
                 })
 
                 logMessage(
-                  'Found matching video clip: ' +
+                  '  Found video silence clip: ' +
                     clip.name +
-                    ' (' +
-                    clipStart +
-                    's to ' +
-                    clipEnd +
-                    's, duration: ' +
-                    clipDuration +
-                    's)'
+                    ' on track ' +
+                    (v + 1) +
+                    ' (index: ' +
+                    vc +
+                    ')'
                 )
               }
             }
           }
         }
       }
-    }
 
-    if (clipsToDelete.length === 0) {
-      return JSON.stringify({
-        success: false,
-        message: 'No silence clips found matching the specified time ranges'
-      })
-    }
+      // Now delete all clips found for THIS segment immediately
+      totalClipsFound += clipsToDeleteNow.length
 
-    logMessage('Found ' + clipsToDelete.length + ' silence clips to delete')
+      if (clipsToDeleteNow.length === 0) {
+        logMessage('  ⚠️ No clips found for this segment')
+        continue
+      }
 
-    // Sort clips by start time (latest first) to prevent index shifting during deletion
-    clipsToDelete.sort(function (a, b) {
-      return b.startTime - a.startTime
-    })
-
-    var clipsDeleted = 0
-    var results = []
-    var errors = []
-
-    // Delete each identified silence clip using proper deletion (not opacity changes)
-    for (var i = 0; i < clipsToDelete.length; i++) {
-      var clipData = clipsToDelete[i]
+      logMessage('  Deleting ' + clipsToDeleteNow.length + ' clips for this segment...')
 
       try {
-        // Use a more aggressive deletion approach
-        var result = properDeleteClip(
-          clipData.trackIndex,
-          clipData.clipIndex,
-          clipData.isVideo,
-          true
-        )
+        // Step 1: Deselect all clips first
+        for (var t = 0; t < sequence.audioTracks.numTracks; t++) {
+          var audioTrack = sequence.audioTracks[t]
+          for (var c = 0; c < audioTrack.clips.numItems; c++) {
+            if (audioTrack.clips[c]) {
+              audioTrack.clips[c].isSelected = false
+            }
+          }
+        }
+        for (var t = 0; t < sequence.videoTracks.numTracks; t++) {
+          var videoTrack = sequence.videoTracks[t]
+          for (var c = 0; c < videoTrack.clips.numItems; c++) {
+            if (videoTrack.clips[c]) {
+              videoTrack.clips[c].isSelected = false
+            }
+          }
+        }
 
-        if (result.success) {
+        // Step 2: Select all clips we want to delete for this segment
+        var clipsSelected = 0
+        for (var i = 0; i < clipsToDeleteNow.length; i++) {
+          var clipData = clipsToDeleteNow[i]
+          if (clipData.clip) {
+            clipData.clip.isSelected = true
+            clipsSelected++
+            logMessage(
+              '    Selected: ' +
+                clipData.name +
+                ' (' +
+                (clipData.isVideo ? 'video' : 'audio') +
+                ' track ' +
+                (clipData.trackIndex + 1) +
+                ')'
+            )
+          }
+        }
+
+        logMessage('  Selected ' + clipsSelected + ' clips, now deleting...')
+
+        // Step 3: Delete all selected clips at once (automatically ripples!)
+        sequence.deleteSelection()
+
+        // Step 4: Record success
+        for (var i = 0; i < clipsToDeleteNow.length; i++) {
+          var clipData = clipsToDeleteNow[i]
           clipsDeleted++
           results.push({
             track: clipData.trackIndex + 1,
             type: clipData.isVideo ? 'video' : 'audio',
             name: clipData.name,
-            method: result.method,
+            method: 'sequence.deleteSelection()',
             segmentId: clipData.segmentId,
             timeRange: clipData.startTime + 's to ' + clipData.endTime + 's',
             duration: clipData.duration + 's'
           })
-          logMessage(
-            'Deleted silence clip: ' + clipData.name + ' (duration: ' + clipData.duration + 's)'
-          )
-        } else {
-          errors.push('Failed to delete clip: ' + clipData.name + ' - ' + result.error)
-          logMessage('Failed to delete: ' + clipData.name + ' - ' + result.error)
         }
+
+        logMessage('  ✅ Deleted ' + clipsToDeleteNow.length + ' clips successfully')
       } catch (deleteError) {
-        errors.push('Error deleting clip: ' + clipData.name + ' - ' + deleteError.toString())
-        logMessage('Error deleting: ' + clipData.name + ' - ' + deleteError.toString())
+        var errorMsg = 'Failed to delete segment clips: ' + deleteError.toString()
+        errors.push(errorMsg)
+        logMessage('  ✗ Error: ' + errorMsg)
       }
+
+      logMessage('  Completed segment ' + (s + 1) + ': deleted ' + clipsDeleted + ' clips so far')
     }
 
     var message = 'Deleted ' + clipsDeleted + ' silence clip(s)'
@@ -1409,11 +1480,16 @@ function deleteSilenceSegments(segmentsJSON) {
       message += ' with ' + errors.length + ' error(s)'
     }
 
+    logMessage('=== Deletion Summary ===')
+    logMessage('Total clips found: ' + totalClipsFound)
+    logMessage('Successfully deleted: ' + clipsDeleted)
+    logMessage('Errors: ' + errors.length)
+
     return JSON.stringify({
       success: clipsDeleted > 0,
       message: message,
       clipsDeleted: clipsDeleted,
-      totalClipsFound: clipsToDelete.length,
+      totalClipsFound: totalClipsFound,
       deletedClips: results,
       errors: errors
     })
@@ -1458,7 +1534,7 @@ function muteSilenceSegments(segmentsJSON) {
     logMessage('Segments to mute: ' + segments.length)
 
     var clipsToMute = []
-    var tolerance = 0.05 // 50ms tolerance for time matching
+    var tolerance = 0.15 // 150ms tolerance for time matching (increased for post-cut precision)
 
     // Search through all tracks to find clips that match our silence segments
     for (var s = 0; s < segments.length; s++) {
@@ -1494,12 +1570,19 @@ function muteSilenceSegments(segmentsJSON) {
             var clipEnd = parseFloat(clip.end.seconds)
             var clipDuration = clipEnd - clipStart
 
-            // Check if this clip matches our silence segment (within tolerance)
-            if (
-              Math.abs(clipStart - segmentStart) < tolerance &&
-              Math.abs(clipEnd - segmentEnd) < tolerance &&
-              Math.abs(clipDuration - segmentDuration) < tolerance
-            ) {
+            // Use improved matching logic (same as deleteSilenceSegments)
+            var startsNearSegmentStart = Math.abs(clipStart - segmentStart) < tolerance
+            var endsNearSegmentEnd = Math.abs(clipEnd - segmentEnd) < tolerance
+            var durationMatches = Math.abs(clipDuration - segmentDuration) < tolerance
+
+            var isContainedInSegment =
+              clipStart >= segmentStart - tolerance && clipEnd <= segmentEnd + tolerance
+
+            var isMatch =
+              (startsNearSegmentStart && endsNearSegmentEnd && durationMatches) ||
+              isContainedInSegment
+
+            if (isMatch) {
               // Mark this clip for muting
               clipsToMute.push({
                 clip: clip,
@@ -1530,9 +1613,13 @@ function muteSilenceSegments(segmentsJSON) {
       }
 
       // Check video tracks for matching clips (only if we found audio clips)
-      var audioClipsFound = clipsToMute.filter(function (c) {
-        return !c.isVideo
-      }).length
+      // Count audio clips manually (ES3 compatible - no .filter())
+      var audioClipsFound = 0
+      for (var i = 0; i < clipsToMute.length; i++) {
+        if (!clipsToMute[i].isVideo) {
+          audioClipsFound++
+        }
+      }
 
       if (audioClipsFound > 0) {
         for (var v = 0; v < sequence.videoTracks.numTracks; v++) {
@@ -1545,12 +1632,19 @@ function muteSilenceSegments(segmentsJSON) {
               var clipEnd = parseFloat(clip.end.seconds)
               var clipDuration = clipEnd - clipStart
 
-              // Check if this clip matches our silence segment (within tolerance)
-              if (
-                Math.abs(clipStart - segmentStart) < tolerance &&
-                Math.abs(clipEnd - segmentEnd) < tolerance &&
-                Math.abs(clipDuration - segmentDuration) < tolerance
-              ) {
+              // Use improved matching logic (same as audio tracks)
+              var startsNearSegmentStart = Math.abs(clipStart - segmentStart) < tolerance
+              var endsNearSegmentEnd = Math.abs(clipEnd - segmentEnd) < tolerance
+              var durationMatches = Math.abs(clipDuration - segmentDuration) < tolerance
+
+              var isContainedInSegment =
+                clipStart >= segmentStart - tolerance && clipEnd <= segmentEnd + tolerance
+
+              var isMatch =
+                (startsNearSegmentStart && endsNearSegmentEnd && durationMatches) ||
+                isContainedInSegment
+
+              if (isMatch) {
                 // Mark this clip for muting
                 clipsToMute.push({
                   clip: clip,
@@ -1748,7 +1842,7 @@ function removeSilenceSegmentsWithGaps(segmentsJSON) {
     logMessage('Segments to remove: ' + segments.length)
 
     var clipsToRemove = []
-    var tolerance = 0.05 // 50ms tolerance for time matching
+    var tolerance = 0.15 // 150ms tolerance for time matching (increased for post-cut precision)
 
     // Search through all tracks to find clips that match our silence segments
     for (var s = 0; s < segments.length; s++) {
@@ -1784,12 +1878,19 @@ function removeSilenceSegmentsWithGaps(segmentsJSON) {
             var clipEnd = parseFloat(clip.end.seconds)
             var clipDuration = clipEnd - clipStart
 
-            // Check if this clip matches our silence segment (within tolerance)
-            if (
-              Math.abs(clipStart - segmentStart) < tolerance &&
-              Math.abs(clipEnd - segmentEnd) < tolerance &&
-              Math.abs(clipDuration - segmentDuration) < tolerance
-            ) {
+            // Use improved matching logic (same as other functions)
+            var startsNearSegmentStart = Math.abs(clipStart - segmentStart) < tolerance
+            var endsNearSegmentEnd = Math.abs(clipEnd - segmentEnd) < tolerance
+            var durationMatches = Math.abs(clipDuration - segmentDuration) < tolerance
+
+            var isContainedInSegment =
+              clipStart >= segmentStart - tolerance && clipEnd <= segmentEnd + tolerance
+
+            var isMatch =
+              (startsNearSegmentStart && endsNearSegmentEnd && durationMatches) ||
+              isContainedInSegment
+
+            if (isMatch) {
               // Mark this clip for removal
               clipsToRemove.push({
                 clip: clip,
@@ -1820,9 +1921,13 @@ function removeSilenceSegmentsWithGaps(segmentsJSON) {
       }
 
       // Check video tracks for matching clips (only if we found audio clips)
-      var audioClipsFound = clipsToRemove.filter(function (c) {
-        return !c.isVideo
-      }).length
+      // Count audio clips manually (ES3 compatible - no .filter())
+      var audioClipsFound = 0
+      for (var i = 0; i < clipsToRemove.length; i++) {
+        if (!clipsToRemove[i].isVideo) {
+          audioClipsFound++
+        }
+      }
 
       if (audioClipsFound > 0) {
         for (var v = 0; v < sequence.videoTracks.numTracks; v++) {
@@ -1835,12 +1940,19 @@ function removeSilenceSegmentsWithGaps(segmentsJSON) {
               var clipEnd = parseFloat(clip.end.seconds)
               var clipDuration = clipEnd - clipStart
 
-              // Check if this clip matches our silence segment (within tolerance)
-              if (
-                Math.abs(clipStart - segmentStart) < tolerance &&
-                Math.abs(clipEnd - segmentEnd) < tolerance &&
-                Math.abs(clipDuration - segmentDuration) < tolerance
-              ) {
+              // Use improved matching logic (same as audio tracks)
+              var startsNearSegmentStart = Math.abs(clipStart - segmentStart) < tolerance
+              var endsNearSegmentEnd = Math.abs(clipEnd - segmentEnd) < tolerance
+              var durationMatches = Math.abs(clipDuration - segmentDuration) < tolerance
+
+              var isContainedInSegment =
+                clipStart >= segmentStart - tolerance && clipEnd <= segmentEnd + tolerance
+
+              var isMatch =
+                (startsNearSegmentStart && endsNearSegmentEnd && durationMatches) ||
+                isContainedInSegment
+
+              if (isMatch) {
                 // Mark this clip for removal
                 clipsToRemove.push({
                   clip: clip,

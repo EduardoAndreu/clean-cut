@@ -105,35 +105,53 @@ function RemoveSilencesButton({
   // Listen for silence session updates to handle deletion timing
   useEffect(() => {
     const handleSilenceSessionUpdate = (_event: any, data: any) => {
-      console.log('Silence session updated:', data)
+      console.log('🔔 Silence session updated EVENT RECEIVED:', data)
+      console.log('📋 Current session ID:', currentSession?.id)
+      console.log('📋 Update session ID:', data.sessionId)
+      console.log('📋 Pending deletion:', pendingDeletion)
+      console.log('📋 IDs match:', data.sessionId === currentSession?.id)
 
       // If we're pending deletion and segments are now processed, proceed with deletion
       if (pendingDeletion && data.sessionId === currentSession?.id) {
         const processedSegments =
           data.segments?.filter((seg: SilenceSegment) => seg.processed) || []
-        console.log('Processed segments:', processedSegments.length)
+        console.log('✅ Processed segments found:', processedSegments.length)
+        console.log('📊 Total segments in update:', data.segments?.length)
 
         if (processedSegments.length > 0) {
+          console.log('🚀 Calling proceedWithDeletion...')
           setPendingDeletion(false)
           proceedWithDeletion(data.sessionId)
+        } else {
+          console.log('⚠️ No processed segments found, not proceeding with deletion')
         }
+      } else {
+        console.log('⚠️ Not proceeding with deletion because:')
+        if (!pendingDeletion) console.log('  - pendingDeletion is false')
+        if (data.sessionId !== currentSession?.id) console.log('  - Session IDs do not match')
       }
     }
 
     // Add IPC listeners
     if (window.electron && window.electron.ipcRenderer) {
+      console.log('📡 Registering IPC listener for silence-session-updated')
       window.electron.ipcRenderer.on('silence-session-updated', handleSilenceSessionUpdate)
+    } else {
+      console.error('❌ window.electron or ipcRenderer not available!')
     }
 
     return () => {
       // Cleanup listeners on unmount
       if (window.electron && window.electron.ipcRenderer) {
+        console.log('🔌 Removing IPC listener for silence-session-updated')
         window.electron.ipcRenderer.removeAllListeners('silence-session-updated')
       }
     }
   }, [pendingDeletion, currentSession])
 
   const proceedWithDeletion = async (sessionId: string) => {
+    console.log('🗑️ proceedWithDeletion called with sessionId:', sessionId)
+    console.log('🗑️ silenceManagement mode:', silenceManagement)
     console.log('Proceeding with post-processing for session:', sessionId)
 
     if (silenceManagement === 'remove') {

@@ -376,19 +376,24 @@ function connect() {
 
             const deleteScriptCall = `deleteSilenceSegments('${JSON.stringify(message.payload)}')`
             cs.evalScript(deleteScriptCall, function (result) {
+              // Log raw result to see what ExtendScript is returning
+              addLogEntry(`📋 Raw delete result: ${result.substring(0, 200)}${result.length > 200 ? '...' : ''}`, 'info')
+              
               try {
                 const resultData = JSON.parse(result)
                 if (resultData.success) {
                   addLogEntry(
-                    `✅ Deleted ${resultData.deletedSegments || message.payload.length} silence segments`,
+                    `✅ Deleted ${resultData.deletedSegments || resultData.clipsDeleted || message.payload.length} silence segments`,
                     'success'
                   )
                 } else {
-                  // Silent success - delete operation completed without explicit success confirmation
-                  addLogEntry(`✅ Delete operation completed`, 'success')
+                  // Show the actual error message
+                  addLogEntry(`❌ Delete failed: ${resultData.error || resultData.message || 'Unknown error'}`, 'error')
                 }
               } catch (e) {
-                addLogEntry(`✅ Delete operation completed`, 'success')
+                // Show parse error with details
+                addLogEntry(`❌ Delete parse error: ${e.message}`, 'error')
+                addLogEntry(`📋 Unparseable result: ${result}`, 'error')
               }
 
               // Send response back to server
@@ -406,18 +411,22 @@ function connect() {
 
             const muteScriptCall = `muteSilenceSegments('${JSON.stringify(message.payload)}')`
             cs.evalScript(muteScriptCall, function (result) {
+              // Log raw result to see what ExtendScript is returning
+              addLogEntry(`📋 Raw mute result: ${result.substring(0, 200)}${result.length > 200 ? '...' : ''}`, 'info')
+              
               try {
                 const resultData = JSON.parse(result)
                 if (resultData.success) {
                   addLogEntry(
-                    `✅ Muted ${resultData.mutedSegments || message.payload.length} silence segments`,
+                    `✅ Muted ${resultData.mutedSegments || resultData.clipsMuted || message.payload.length} silence segments`,
                     'success'
                   )
                 } else {
-                  addLogEntry(`❌ Mute failed: ${resultData.error}`, 'error')
+                  addLogEntry(`❌ Mute failed: ${resultData.error || resultData.message || 'Unknown error'}`, 'error')
                 }
               } catch (e) {
-                addLogEntry(`✅ Mute operation completed`, 'success')
+                addLogEntry(`❌ Mute parse error: ${e.message}`, 'error')
+                addLogEntry(`📋 Unparseable result: ${result}`, 'error')
               }
 
               // Send response back to server
@@ -435,18 +444,22 @@ function connect() {
 
             const removeWithGapsScriptCall = `removeSilenceSegmentsWithGaps('${JSON.stringify(message.payload)}')`
             cs.evalScript(removeWithGapsScriptCall, function (result) {
+              // Log raw result to see what ExtendScript is returning
+              addLogEntry(`📋 Raw remove result: ${result.substring(0, 200)}${result.length > 200 ? '...' : ''}`, 'info')
+              
               try {
                 const resultData = JSON.parse(result)
                 if (resultData.success) {
                   addLogEntry(
-                    `✅ Removed ${resultData.removedSegments || message.payload.length} silence segments with gaps`,
+                    `✅ Removed ${resultData.removedSegments || resultData.clipsRemoved || message.payload.length} silence segments with gaps`,
                     'success'
                   )
                 } else {
-                  addLogEntry(`❌ Remove with gaps failed: ${resultData.error}`, 'error')
+                  addLogEntry(`❌ Remove with gaps failed: ${resultData.error || resultData.message || 'Unknown error'}`, 'error')
                 }
               } catch (e) {
-                addLogEntry(`✅ Remove with gaps operation completed`, 'success')
+                addLogEntry(`❌ Remove parse error: ${e.message}`, 'error')
+                addLogEntry(`📋 Unparseable result: ${result}`, 'error')
               }
 
               // Send response back to server

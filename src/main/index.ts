@@ -620,11 +620,17 @@ app.whenReady().then(() => {
   ipcMain.handle(
     'delete-silence-segments',
     async (_, sessionId?: string, segmentIds?: string[]) => {
+      console.log('🗑️ delete-silence-segments handler called')
+      console.log('  - Session ID:', sessionId)
+      console.log('  - Segment IDs:', segmentIds)
+      
       if (!premiereSocket) {
         throw new Error('Premiere Pro is not connected.')
       }
 
       const targetSessionId = sessionId || currentSilenceSession?.id
+      console.log('  - Target session ID:', targetSessionId)
+      
       if (!targetSessionId) {
         throw new Error('No active silence session found.')
       }
@@ -634,13 +640,25 @@ app.whenReady().then(() => {
         throw new Error('Silence session not found.')
       }
 
+      console.log('  - Session found with', session.segments.length, 'total segments')
+      
       // Get deletable segments (processed but not deleted)
       const deletableSegments = getDeletableSilenceSegments(targetSessionId)
+      console.log('  - Deletable segments:', deletableSegments.length)
+      
+      if (deletableSegments.length === 0) {
+        console.log('  - Segment states:')
+        session.segments.forEach((seg, i) => {
+          console.log(`    ${i}: processed=${seg.processed}, deleted=${seg.deleted}`)
+        })
+      }
 
       // If no specific segment IDs provided, delete all deletable segments
       const segmentsToDelete = segmentIds
         ? deletableSegments.filter((segment) => segmentIds.includes(segment.id))
         : deletableSegments
+
+      console.log('  - Segments to delete:', segmentsToDelete.length)
 
       if (segmentsToDelete.length === 0) {
         throw new Error('No deletable silence segments found.')
@@ -1124,15 +1142,28 @@ app.whenReady().then(() => {
               currentSilenceSession &&
               currentSilenceSession.id === parsedMessage.sessionId
             ) {
+              console.log('🔄 Marking segments as processed for session:', parsedMessage.sessionId)
+              console.log('📊 Total segments:', currentSilenceSession.segments.length)
+              
               currentSilenceSession.segments.forEach((segment) => {
                 segment.processed = true
+                console.log(`  ✅ Segment ${segment.id} marked as processed`)
               })
 
+              console.log('📤 Notifying renderer about processed segments')
+              
               // Notify renderer about the updated session
               safelyNotifyRenderer('silence-session-updated', {
                 sessionId: currentSilenceSession.id,
                 segments: currentSilenceSession.segments
               })
+              
+              console.log('✅ Renderer notified successfully')
+            } else {
+              console.log('⚠️ Could not mark segments as processed:')
+              console.log('  - Message session ID:', parsedMessage.sessionId)
+              console.log('  - Current session exists:', !!currentSilenceSession)
+              console.log('  - Current session ID:', currentSilenceSession?.id)
             }
             break
 
