@@ -1408,64 +1408,81 @@ function deleteSilenceSegments(segmentsJSON) {
       logMessage('  Deleting ' + clipsToDeleteNow.length + ' clips for this segment...')
 
       try {
-        // Step 1: Deselect all clips first
-        for (var t = 0; t < sequence.audioTracks.numTracks; t++) {
-          var audioTrack = sequence.audioTracks[t]
-          for (var c = 0; c < audioTrack.clips.numItems; c++) {
-            if (audioTrack.clips[c]) {
-              audioTrack.clips[c].isSelected = false
-            }
-          }
-        }
-        for (var t = 0; t < sequence.videoTracks.numTracks; t++) {
-          var videoTrack = sequence.videoTracks[t]
-          for (var c = 0; c < videoTrack.clips.numItems; c++) {
-            if (videoTrack.clips[c]) {
-              videoTrack.clips[c].isSelected = false
-            }
-          }
-        }
+        // Group clips by track to delete in correct order
+        var clipsByTrack = {}
 
-        // Step 2: Select all clips we want to delete for this segment
-        var clipsSelected = 0
         for (var i = 0; i < clipsToDeleteNow.length; i++) {
           var clipData = clipsToDeleteNow[i]
-          if (clipData.clip) {
-            clipData.clip.isSelected = true
-            clipsSelected++
+          var trackKey = (clipData.isVideo ? 'video_' : 'audio_') + clipData.trackIndex
+
+          if (!clipsByTrack[trackKey]) {
+            clipsByTrack[trackKey] = []
+          }
+          clipsByTrack[trackKey].push(clipData)
+        }
+
+        logMessage('  Grouped clips into ' + Object.keys(clipsByTrack).length + ' tracks')
+
+        // For each track, delete clips from highest index to lowest
+        for (var trackKey in clipsByTrack) {
+          if (clipsByTrack.hasOwnProperty(trackKey)) {
+            var trackClips = clipsByTrack[trackKey]
+
+            // Sort by clipIndex descending (highest first)
+            trackClips.sort(function (a, b) {
+              return b.clipIndex - a.clipIndex
+            })
+
             logMessage(
-              '    Selected: ' +
-                clipData.name +
-                ' (' +
-                (clipData.isVideo ? 'video' : 'audio') +
-                ' track ' +
-                (clipData.trackIndex + 1) +
-                ')'
+              '  Track ' + trackKey + ': deleting ' + trackClips.length + ' clips in reverse order'
             )
+
+            // Delete each clip in this track from highest to lowest index
+            for (var i = 0; i < trackClips.length; i++) {
+              var clipData = trackClips[i]
+
+              try {
+                // Use clip.remove() with ripple delete
+                var removeResult = clipData.clip.remove(true, true)
+
+                // Success can be: true, 0, or undefined (different Premiere versions)
+                // Failure is: false or 1 (error code)
+                if (removeResult !== false && removeResult !== 1) {
+                  clipsDeleted++
+                  results.push({
+                    track: clipData.trackIndex + 1,
+                    type: clipData.isVideo ? 'video' : 'audio',
+                    name: clipData.name,
+                    method: 'clip.remove(ripple)',
+                    segmentId: clipData.segmentId,
+                    timeRange: clipData.startTime + 's to ' + clipData.endTime + 's',
+                    duration: clipData.duration + 's'
+                  })
+                  logMessage(
+                    '    ✓ Deleted: ' +
+                      clipData.name +
+                      ' (index ' +
+                      clipData.clipIndex +
+                      ', result: ' +
+                      removeResult +
+                      ')'
+                  )
+                } else {
+                  var errMsg =
+                    'Failed to delete ' + clipData.name + ' - remove() returned: ' + removeResult
+                  errors.push(errMsg)
+                  logMessage('    ✗ ' + errMsg)
+                }
+              } catch (clipError) {
+                var errMsg = 'Error deleting ' + clipData.name + ': ' + clipError.toString()
+                errors.push(errMsg)
+                logMessage('    ✗ ' + errMsg)
+              }
+            }
           }
         }
 
-        logMessage('  Selected ' + clipsSelected + ' clips, now deleting...')
-
-        // Step 3: Delete all selected clips at once (automatically ripples!)
-        sequence.deleteSelection()
-
-        // Step 4: Record success
-        for (var i = 0; i < clipsToDeleteNow.length; i++) {
-          var clipData = clipsToDeleteNow[i]
-          clipsDeleted++
-          results.push({
-            track: clipData.trackIndex + 1,
-            type: clipData.isVideo ? 'video' : 'audio',
-            name: clipData.name,
-            method: 'sequence.deleteSelection()',
-            segmentId: clipData.segmentId,
-            timeRange: clipData.startTime + 's to ' + clipData.endTime + 's',
-            duration: clipData.duration + 's'
-          })
-        }
-
-        logMessage('  ✅ Deleted ' + clipsToDeleteNow.length + ' clips successfully')
+        logMessage('  ✅ Completed deletion for segment')
       } catch (deleteError) {
         var errorMsg = 'Failed to delete segment clips: ' + deleteError.toString()
         errors.push(errorMsg)
