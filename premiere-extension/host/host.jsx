@@ -2152,8 +2152,20 @@ function exportSequenceAudio(outputFolder, selectedTracksJson, selectedRange) {
       outputFolder: outputFolder,
       selectedTracksJson: selectedTracksJson,
       selectedTracksType: typeof selectedTracksJson,
+      selectedTracksConstructor:
+        selectedTracksJson && selectedTracksJson.constructor
+          ? selectedTracksJson.constructor.name
+          : 'null',
       selectedTracksLength: selectedTracksJson ? selectedTracksJson.length : 'null',
+      selectedTracksStringified: '',
       selectedRange: selectedRange || 'entire'
+    }
+
+    // Capture stringified value for debugging
+    try {
+      debugInfo.selectedTracksStringified = String(selectedTracksJson).substring(0, 100)
+    } catch (stringifyError) {
+      debugInfo.selectedTracksStringified = 'error: ' + stringifyError.toString()
     }
 
     logMessage('=== EXPORT SEQUENCE AUDIO VIA QE DOM ===')
@@ -2172,23 +2184,118 @@ function exportSequenceAudio(outputFolder, selectedTracksJson, selectedRange) {
     var sequence = app.project.activeSequence
     var selectedTracks = []
 
-    // Parse selected tracks if provided
+    // Parse selected tracks if provided - robust handling of various input types
     if (selectedTracksJson && selectedTracksJson.length > 0) {
+      var inputType = typeof selectedTracksJson
+      debugInfo.parsingMethod = 'none'
+
+      logMessage(
+        'Parsing selectedTracksJson - type: ' + inputType + ', length: ' + selectedTracksJson.length
+      )
+
       try {
-        selectedTracks = JSON.parse(selectedTracksJson)
+        if (inputType === 'string') {
+          // Case 1: Input is a JSON string - parse it
+          logMessage('Parsing as JSON string')
+          selectedTracks = JSON.parse(selectedTracksJson)
+          debugInfo.parsingMethod = 'JSON.parse'
+        } else if (inputType === 'object' && selectedTracksJson !== null) {
+          // Case 2: Input is already an object (common in ExtendScript eval context)
+
+          // Check if it's array-like (has numeric length property)
+          if (typeof selectedTracksJson.length === 'number' && selectedTracksJson.length > 0) {
+            logMessage('Converting array-like object to array')
+            selectedTracks = []
+            for (var k = 0; k < selectedTracksJson.length; k++) {
+              selectedTracks.push(selectedTracksJson[k])
+            }
+            debugInfo.parsingMethod = 'array-like-conversion'
+          } else if (selectedTracksJson.length === 0) {
+            // Empty array-like object
+            logMessage('Empty array-like object detected')
+            selectedTracks = []
+            debugInfo.parsingMethod = 'empty-array-like'
+          } else {
+            // Plain object - try to extract values
+            logMessage('Converting plain object to array')
+            selectedTracks = []
+            for (var key in selectedTracksJson) {
+              if (selectedTracksJson.hasOwnProperty(key)) {
+                selectedTracks.push(selectedTracksJson[key])
+              }
+            }
+            debugInfo.parsingMethod = 'object-values-extraction'
+          }
+        } else {
+          // Case 3: Unexpected type - try string conversion then parse
+          logMessage('Unexpected type, attempting string conversion')
+          var stringified = String(selectedTracksJson)
+          selectedTracks = JSON.parse(stringified)
+          debugInfo.parsingMethod = 'string-conversion-fallback'
+        }
+
+        logMessage('Parsing successful using method: ' + debugInfo.parsingMethod)
         logMessage('Selected tracks for export: ' + selectedTracks.join(', '))
         debugInfo.selectedTracksParsed = selectedTracks
       } catch (parseError) {
         debugInfo.parseError = parseError.toString()
+        logMessage('Parse error: ' + parseError.toString())
         return JSON.stringify({
           success: false,
-          error: 'Invalid selected tracks format: ' + parseError.toString(),
+          error:
+            'Invalid selected tracks format: ' +
+            parseError.toString() +
+            ' (type: ' +
+            inputType +
+            ')',
           debug: debugInfo
         })
       }
     } else {
       logMessage('No specific tracks selected, exporting all audio tracks')
       debugInfo.selectedTracksParsed = 'none - exporting all'
+      debugInfo.parsingMethod = 'not-required'
+    }
+
+    // Validation: Verify selectedTracks is a proper array with numbers
+    if (selectedTracks.length > 0) {
+      var validationErrors = []
+      var hasNonNumeric = false
+
+      // Check if selectedTracks is actually an array
+      if (typeof selectedTracks.join !== 'function') {
+        logMessage('WARNING: selectedTracks is not a proper array after parsing')
+        validationErrors.push('Not a proper array')
+      }
+
+      // Validate each element is a number
+      for (var v = 0; v < selectedTracks.length; v++) {
+        var trackNum = selectedTracks[v]
+        if (typeof trackNum !== 'number' && isNaN(Number(trackNum))) {
+          hasNonNumeric = true
+          validationErrors.push('Track at index ' + v + ' is not a number: ' + trackNum)
+        } else if (typeof trackNum !== 'number') {
+          // Convert to number if it's numeric but not a number type
+          selectedTracks[v] = Number(trackNum)
+          logMessage('Converted track at index ' + v + ' to number: ' + selectedTracks[v])
+        }
+      }
+
+      if (validationErrors.length > 0) {
+        debugInfo.validationErrors = validationErrors
+        logMessage('Validation warnings: ' + validationErrors.join('; '))
+      }
+
+      if (hasNonNumeric) {
+        return JSON.stringify({
+          success: false,
+          error: 'Selected tracks contains non-numeric values: ' + validationErrors.join(', '),
+          debug: debugInfo
+        })
+      }
+
+      logMessage('Validation passed: ' + selectedTracks.length + ' tracks are valid numbers')
+      debugInfo.validationPassed = true
     }
 
     // Generate unique filename and output path
