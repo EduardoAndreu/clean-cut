@@ -73,6 +73,30 @@ if (typeof JSON === 'undefined') {
   }
 }
 
+// Add polyfill for Array.indexOf (ExtendScript doesn't have it)
+if (!Array.prototype.indexOf) {
+  Array.prototype.indexOf = function (searchElement, fromIndex) {
+    if (this === null || this === undefined) {
+      throw new TypeError('Array.prototype.indexOf called on null or undefined')
+    }
+    var arr = Object(this)
+    var len = arr.length >>> 0
+    if (len === 0) return -1
+
+    var n = fromIndex | 0
+    if (n >= len) return -1
+
+    var k = Math.max(n >= 0 ? n : len - Math.abs(n), 0)
+    while (k < len) {
+      if (k in arr && arr[k] === searchElement) {
+        return k
+      }
+      k++
+    }
+    return -1
+  }
+}
+
 /**
  * Helper function to log messages to the Premiere Pro console
  * @param {string} message - Message to log
